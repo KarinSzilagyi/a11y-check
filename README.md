@@ -24,8 +24,10 @@ certification: screen reader output, meaningful alt text and colour-only meaning
 ## How it works
 
 ```
-static/index.html              the page people see: a single HTML file, no build step
+static/index.html              the report check page: a single HTML file, no build step
+static/palette.html            the palette check: tests report colours in the browser, no API needed
 app.py                         the API: queues checks, runs them, returns results and screenshots
+worker.py                      queue mode only: runs one waiting check as a Container Apps job
 audit/audit_accessibility.py   the audit itself: audit_report() and its checks
 Dockerfile                     slim container image (Python + Chromium headless shell)
 ```
@@ -85,9 +87,35 @@ docker build -t a11y-check . && docker run -p 8000:8000 a11y-check
 | `MAX_QUEUE` | 20 | waiting checks before new ones are refused |
 | `RATE_LIMIT` | 6 | checks one visitor can start per hour |
 | `RESULT_MINUTES` | 60 | how long results and screenshots are kept |
-| `VIEWER_HOSTS` | the community viewer's host | allowed report viewer hosts |
+| `VIEWER_HOSTS` | the Fabric community gallery's report viewer | allowed report viewer hosts (`…/iframeEmbed/<id>` links) |
+| `RUN_MODE` | `inline` | `inline`: checks run one at a time inside the web service. `queue`: see below |
 
-Results are kept in memory, so run **one** instance with one worker. A restart clears them.
+With `RUN_MODE=inline`, results are kept in memory, so run **one** instance with one worker. A restart clears them.
+
+### Queue mode: several checks at once
+
+With `RUN_MODE=queue` the web service only accepts checks and reports on them. Each new check goes
+to an Azure Storage queue; an event-driven **Container Apps job** starts one execution per waiting
+check (up to its parallelism, e.g. 5), runs `python worker.py` from the same image, and stops when
+the check is done. Status, results and tab-order screenshots are kept in a blob container and
+still served only through `/api/audits/{id}` and `/api/audits/{id}/images/{name}`. Both the web
+service and the job reach storage with a managed identity (no keys, shared-key access off).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `STORAGE_ACCOUNT` | (required) | storage account that holds the queue and the container |
+| `QUEUE_NAME` | `audits` | queue for new checks |
+| `BLOB_CONTAINER` | `audits` | container for status, results and screenshots |
+| `MAX_PARALLEL` | 5 | checks that run at once (1–10); set it to the job's parallel executions. Only used for "N checks ahead of yours" |
+| `AZURE_CLIENT_ID` | (empty) | client ID of a user-assigned identity; empty uses the system-assigned one |
+| `WORKER_MAX_JOBS` | 3 | worker only: checks one execution runs one after another while more are waiting |
+| `WORKER_SECONDS` | 3000 | worker only: stay below the job's replica timeout |
+
+Roles, each scoped to just the queue or the container: the web service needs *Storage Queue Data
+Message Sender* and *Storage Blob Data Contributor*; the job needs *Storage Queue Data Message
+Processor*, *Storage Queue Data Reader* (its scale rule reads the queue length) and *Storage Blob
+Data Contributor*. Add a storage lifecycle rule that deletes blobs older than one day as a safety
+net; the web service itself removes results after `RESULT_MINUTES`.
 
 ## Host your own copy
 
@@ -105,8 +133,9 @@ Results are kept in memory, so run **one** instance with one worker. A restart c
    ```
    Open `/api/health` on the address it prints to check that it runs, and set a budget alert
    with your cloud provider.
-3. **Page.** In `static/index.html`, set your service address on the `<html>` tag
-   (`data-api="https://a11y-api.example.com"`) and upload the file to your website.
+3. **Page.** The service serves both pages itself, so you can stop here. To host the pages on your
+   own website instead, set your service address on the `<html>` tag in `static/index.html`
+   (`data-api="https://a11y-api.example.com"`) and upload `index.html` and `palette.html`.
    The bookmarklet on the page points to wherever the page is hosted, so it needs no change.
 
 ## Limits

@@ -44,7 +44,7 @@ def slugify(text, limit=60):
 
 
 TESTS = ["alt_text", "text_contrast", "visual_contrast", "keyboard_access", "tab_order"]
-FIELDS = (["submission_id", "title", "audit_status", "audited_at", "pages_audited", "states_audited"]
+FIELDS = (["report_id", "audit_status", "audited_at", "pages_audited", "states_audited"]
           + [f"{test}_{part}" for test in TESTS for part in ("score", "checked", "issues")]
           + ["visuals_core_data", "visuals_core_layout", "visuals_custom", "visuals_core_share",
              "visuals_core_data_types", "visuals_custom_types", "visuals_by_page"]
@@ -903,11 +903,11 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
     max_pages caps the pages audited and explore_seconds the time spent on button states (public tool);
     on_page(number, total, state) is called before each page and each state, for progress display."""
     result = {key: "" for key in FIELDS}
-    result.update(submission_id=row["submission_id"], title=row["title"],
+    result.update(report_id=row["report_id"],
                   audited_at=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"))
-    url = row.get("iframe_url") or row.get("powerbi_embed_url")
+    url = row.get("url")
     if not url:
-        result["audit_status"] = "not audited: no embed URL"
+        result["audit_status"] = "not audited: no report URL"
         return result
     totals = {test: [0, 0, []] for test in TESTS}
     notes, images, failed = [], [], []
@@ -955,7 +955,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                 notes.extend(state_notes)
                 tail = (f"s{state:02d}" if state else "") + ("_" + page_slug if page_slug else "")
                 title = (name or f"Page {number}") + (f" · after {label}" if label else "")
-                images.append((f'{row["submission_id"]}_p{number:02d}{tail}.png', image, title.replace(";", ","), state))
+                images.append((f'{row["report_id"]}_p{number:02d}{tail}.png', image, title.replace(";", ","), state))
 
             def open_fresh(path):
                 fresh = load()
@@ -1002,7 +1002,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         return result
     finally:
         context.close()
-    for old in tab_dir.glob(f'{row["submission_id"]}_p*.png'):
+    for old in tab_dir.glob(f'{row["report_id"]}_p*.png'):
         old.unlink()
     for filename, image, _, _ in images:
         image.save(tab_dir / filename, optimize=True)

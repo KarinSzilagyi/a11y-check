@@ -6,3 +6,5 @@ work/
 
 # private setup notes (Azure account details)
 DEPLOY-NOTES.md
+# private: the branded pages for the author's own site
+site/

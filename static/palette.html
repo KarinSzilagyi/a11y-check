@@ -1,0 +1,1130 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+     Copyright (C) 2026 Karin Szilágyi -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Power BI Palette Check</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%231D4ED8%22/%3E%3Cpath d=%22m9 16.5 4.5 4.5L23 11%22 fill=%22none%22 stroke=%22%23FFFFFF%22 stroke-width=%223%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
+<meta name="description" content="Free tool: test Power BI chart, text and background colours against WCAG 2.2 contrast, simulate colour vision deficiencies and fix every failing colour.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;500;600&family=Atkinson+Hyperlegible+Next:wght@400;500;700;800&family=Poppins:wght@400;500;600&display=swap">
+<script>
+  try { const t = localStorage.getItem("theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+/* Dark slate hero, white sections, square corners, Poppins headings, light blue on dark only.
+   Blue is the working colour; purple is a small accent (focus, selection). */
+:root {
+  --bg: #FFFFFF; --band: #F3F4F6; --surface: #FFFFFF; --cell: #F3F4F6;
+  --ink: #15181D; --ink-2: #545B66; --rule: #D9DCE1; --rule-strong: #8B929C;
+  --brand: #1D4ED8; --brand-hover: #1E40AF; --brand-ink: #FFFFFF;
+  --accent: #6A3FD0; --accent-soft: #EEE8FC;
+  --hero: #111827; --hero-2: #1F2937; --hero-3: #273449; --on-dark: #93C5FD;
+  --pass: #1B7340;  --pass-soft: #E1F1E6;
+  --warn: #6A3FD0;  --warn-soft: #ECE5FD;
+  --fail: #B42318;  --fail-soft: #FBE4E1;
+  --font: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", Verdana, system-ui, sans-serif;
+  --head: "Poppins", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F141A; --band: #131A22; --surface: #1A222C; --cell: #232D3A; --ink: #EEF1F5; --ink-2: #AEB6C2; --rule: #2A3440; --rule-strong: #6B7889;
+    --brand: #93C5FD; --brand-hover: #BFDBFE; --brand-ink: #0F141A; --accent: #BBA6FF; --accent-soft: #2B2C55;
+    --hero: #0B0F14; --hero-2: #111827; --hero-3: #1A2333;
+    --pass: #8EE3B0; --pass-soft: #144233; --warn: #CDBEFF; --warn-soft: #322B5E; --fail: #FFA69B; --fail-soft: #4B2229;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F141A; --band: #131A22; --surface: #1A222C; --cell: #232D3A; --ink: #EEF1F5; --ink-2: #AEB6C2; --rule: #2A3440; --rule-strong: #6B7889;
+  --brand: #93C5FD; --brand-hover: #BFDBFE; --brand-ink: #0F141A; --accent: #BBA6FF; --accent-soft: #2B2C55;
+  --hero: #0B0F14; --hero-2: #111827; --hero-3: #1A2333;
+  --pass: #8EE3B0; --pass-soft: #144233; --warn: #CDBEFF; --warn-soft: #322B5E; --fail: #FFA69B; --fail-soft: #4B2229;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.55 var(--font); }
+h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.15; font-family: var(--head); }
+p { margin: 0; }
+a { color: var(--brand); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+svg.i { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.skip { position: absolute; left: 12px; top: -60px; background: var(--on-dark); color: #111; padding: 8px 14px; z-index: 5; font-weight: 700; }
+.skip:focus { top: 12px; }
+[hidden] { display: none !important; }
+.muted { color: var(--ink-2); }
+
+/* hero with the navigation on it */
+.hero { background: radial-gradient(ellipse 60% 120% at 85% 10%, rgba(147, 197, 253, .14), transparent 60%), linear-gradient(115deg, var(--hero) 0%, var(--hero-2) 55%, var(--hero-3) 100%); color: #FFFFFF; }
+.hero :focus-visible { outline-color: var(--on-dark); }
+.topbar { position: sticky; top: 0; z-index: 30; padding-top: env(safe-area-inset-top, 0px); color: #FFFFFF; background: linear-gradient(115deg, var(--hero) 0%, var(--hero-2) 55%, var(--hero-3) 100%); border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.topbar :focus-visible { outline-color: var(--on-dark); }
+.nav { display: flex; align-items: center; gap: 8px 28px; flex-wrap: wrap; padding-block: 12px; }
+.step, #main { scroll-margin-top: 72px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: #FFFFFF; text-decoration: none; font: 600 18px var(--head); }
+.brand svg { width: 32px; height: 32px; overflow: visible; }
+/* original logo colours; a thin white outline keeps the navy part visible on the dark header */
+.tabs { display: flex; gap: 22px; margin-right: auto; }
+.tabs a { color: rgba(255, 255, 255, .78); text-decoration: none; font: 400 16px var(--head); padding-block: 6px; border-bottom: 2px solid transparent; }
+.tabs a:hover { color: #FFFFFF; }
+.tabs a[aria-current="page"] { color: #FFFFFF; border-bottom-color: var(--on-dark); }
+.actions { display: flex; align-items: center; gap: 4px; }
+.site, .theme { display: inline-flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, .78); text-decoration: none; font: 400 15px var(--head); background: none; border: 0; padding: 6px 8px; cursor: pointer; }
+.site:hover, .theme:hover { color: #FFFFFF; }
+.site svg.i, .theme svg.i { width: 20px; height: 20px; }
+@media (max-width: 960px) { .tlabel { display: none; } }
+@media (max-width: 560px) { .tabs { order: 3; flex-basis: 100%; } .step, #main { scroll-margin-top: 110px; } }
+.hero-body { padding-block: 40px 30px; display: grid; gap: 14px; }
+.eyebrow { font: 500 15px var(--head); color: var(--on-dark); }
+.hero h1 { font-weight: 600; font-size: clamp(30px, 4vw, 46px); letter-spacing: -.02em; }
+.lede { font-size: 18px; color: #D1D5DB; max-width: 66ch; }
+.by { font-size: 15px; color: #AEB6C2; }
+.by a { color: #FFFFFF; }
+/* the three steps, as a strip at the bottom of the hero */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid rgba(255, 255, 255, .16); }
+.flow li + li { border-left: 1px solid rgba(255, 255, 255, .16); }
+.flow a { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; padding: 16px 18px 18px 0; color: #FFFFFF; text-decoration: none; }
+.flow li + li a { padding-left: 18px; }
+.flow .num { grid-row: span 2; font: 600 30px/1 var(--head); color: rgba(255, 255, 255, .35); }
+.flow .t { font: 600 16px var(--head); }
+.flow .s { font-size: 14px; color: #AEB6C2; }
+.flow a[aria-current="step"] .num { color: var(--on-dark); }
+.flow a:hover .t { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 640px) { .flow .s { display: none; } .flow a { padding-right: 8px; } .flow li + li a { padding-left: 10px; } }
+
+/* buttons: square, like the website */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 2px solid var(--brand); background: var(--brand); color: var(--brand-ink); font: 600 14px var(--head); letter-spacing: .08em; text-transform: uppercase; padding: 0 20px; min-height: 46px; cursor: pointer; white-space: nowrap; text-decoration: none; }
+.btn:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.btn[disabled] { opacity: .4; cursor: default; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--ink); }
+.btn.ghost:hover { background: var(--ink); color: var(--bg); }
+.btn.small { min-height: 38px; padding: 0 14px; font-size: 13px; }
+.btn svg.i { width: 18px; height: 18px; }
+.link { border: 0; background: none; padding: 0; color: var(--brand); font: 600 15px var(--font); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* steps */
+.step { border-bottom: 1px solid var(--rule); }
+.step:nth-of-type(even) { background: var(--band); }
+.step > .wrap { padding-block: 44px; display: grid; gap: 24px; }
+.step-head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: baseline; }
+.step-head .num { grid-row: span 2; font: 600 54px/.9 var(--head); color: var(--brand); }
+.step-head h2 { font-size: 28px; font-weight: 600; letter-spacing: -.01em; }
+.step-head p { color: var(--ink-2); max-width: 75ch; }
+.step-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* step 1 */
+.add-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 900px) { .add-grid { grid-template-columns: minmax(0, 1fr); } }
+.paste { display: grid; gap: 10px; }
+.paste label { font: 600 17px var(--head); }
+.paste .hint { font-size: 14px; color: var(--ink-2); }
+.paste textarea { width: 100%; min-height: 150px; resize: vertical; border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink); font: 14px/1.5 var(--mono); padding: 12px; }
+.paste textarea:focus { outline: none; border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.paste .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.paste pre.fmt { margin: 0; padding: 8px 10px; background: var(--surface); border-left: 3px solid var(--brand); font: 13px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap; }
+.quick { display: grid; gap: 8px; padding-top: 6px; border-top: 1px solid var(--rule); }
+.quick .ql { font: 600 15px var(--head); }
+.quick .qs { display: flex; flex-wrap: wrap; gap: 6px; }
+.qbtn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); font: 500 12px var(--mono); padding: 4px 8px 4px 4px; cursor: grab; }
+.qbtn:hover { border-color: var(--ink); }
+.qbtn i { width: 20px; height: 20px; border: 1px solid var(--rule-strong); }
+.status-key { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--ink-2); margin: 0; }
+.status-key .ok { color: var(--pass); } .status-key .bad { color: var(--fail); } .status-key .warn { color: var(--warn); }
+.bucket-tools { display: inline-flex; gap: 4px; margin-left: auto; }
+.tool { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: none; color: var(--ink-2); font: 500 13px var(--font); padding: 3px 7px; cursor: pointer; }
+.tool:hover { border-color: var(--ink); color: var(--ink); }
+.tool.danger:hover { border-color: var(--fail); color: var(--fail); }
+.tool svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.bucket-head .rule-text { flex-basis: 100%; order: 3; }
+.sel-bar { position: sticky; bottom: 0; z-index: 5; background: var(--surface); border: 1px solid var(--ink); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; font-size: 14px; color: var(--ink-2); min-height: 24px; }
+.chip.multi { outline: 3px solid var(--brand); outline-offset: 1px; }
+.chip.multi::before { content: "✓"; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; display: grid; place-items: center; background: var(--brand); color: var(--brand-ink); font: 700 12px var(--font); }
+.chip { position: relative; }
+.msg { font-size: 14px; }
+.msg.err { color: var(--fail); }
+.buckets { display: grid; gap: 16px; }
+.bucket { border: 1px solid var(--rule); background: var(--surface); padding: 14px; display: grid; gap: 10px; transition: border-color .12s, background .12s; }
+.bucket.over { border: 1px dashed var(--brand); background: var(--accent-soft); }
+.bucket-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.bucket-head h3 { font-size: 17px; font-weight: 600; }
+.bucket-head .rule-text { font-size: 13px; color: var(--ink-2); }
+.bucket.tray { border-style: dashed; }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; min-height: 76px; align-content: flex-start; }
+.chips:empty::after { content: attr(data-empty); align-self: center; font-size: 14px; color: var(--ink-2); }
+.chip { display: grid; grid-template-rows: 52px auto; width: 82px; border: 1px solid var(--rule); background: var(--surface); padding: 0; cursor: grab; color: var(--ink); font: 500 12px var(--mono); text-align: center; }
+.chip .sw { display: block; border-bottom: 1px solid var(--rule); }
+.chip .hx { padding: 4px 2px 5px; display: grid; gap: 1px; }
+.chip-wrap { position: relative; display: grid; width: 82px; }
+.chip-x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font); cursor: pointer; opacity: .85; }
+.chip-x:hover, .chip-x:focus-visible { opacity: 1; border-color: var(--fail); color: var(--fail); }
+.role-btn { border: 1px solid var(--rule); border-top: 0; background: var(--surface); color: var(--ink-2); font: 600 10px var(--font); letter-spacing: .1em; text-transform: uppercase; padding: 4px 2px; cursor: pointer; }
+.role-btn:hover { color: var(--ink); border-color: var(--ink); }
+.chip:hover { border-color: var(--ink); }
+.chip.dragging { opacity: .35; }
+.chip .st { font-weight: 700; }
+.chip .st.ok { color: var(--pass); } .chip .st.bad { color: var(--fail); } .chip .st.warn { color: var(--warn); }
+
+/* step 2 */
+.scores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); }
+@media (max-width: 900px) { .scores { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.score { padding: 20px 20px 18px 0; display: grid; gap: 6px; align-content: start; }
+.score + .score { padding-left: 20px; border-left: 1px solid var(--rule); }
+@media (max-width: 900px) { .score:nth-child(3) { border-left: 0; padding-left: 0; } .score:nth-child(n+3) { border-top: 1px solid var(--rule); } }
+.score .t { font: 700 12px/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.score .n { font: 600 40px/1 var(--head); letter-spacing: -.02em; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.score .n small { font: 400 14px var(--font); color: var(--ink-2); letter-spacing: 0; }
+.score .r { font-size: 13px; color: var(--ink-2); }
+.bar { height: 4px; background: var(--rule); }
+.bar i { display: block; height: 100%; background: var(--pass); }
+.bar.part i { background: var(--warn); }
+.bar.low i { background: var(--fail); }
+.check-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 980px) { .check-grid { grid-template-columns: minmax(0, 1fr); } }
+.sub-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.sub-h h3 { font-size: 20px; font-weight: 600; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 0 16px; }
+.seg button { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink-2); font: 400 15px var(--head); padding: 3px 0; cursor: pointer; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.vnote { font-size: 14px; color: var(--ink-2); margin-bottom: 10px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--brand); }
+.preview { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-top: 10px; }
+.canvas { padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.canvas .cap { font: 600 11px var(--font); letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+.canvas svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 11px; height: 11px; display: inline-block; }
+.textrow { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; }
+.textrow .big { font-size: 22px; font-weight: 700; }
+.labels { display: flex; flex-wrap: wrap; gap: 4px; }
+.labels span { padding: 3px 7px; font-size: 13px; font-weight: 700; }
+.findings { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+.findings li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); font-size: 15px; }
+.findings li svg.i { width: 20px; height: 20px; margin-top: 2px; stroke-width: 2.2; }
+.findings li.bad svg.i { color: var(--fail); }
+.findings li.warn svg.i { color: var(--warn); }
+.findings li.ok svg.i { color: var(--pass); }
+.findings .fix { border: 1px solid var(--ink); background: none; color: var(--ink); font: 600 12px var(--head); letter-spacing: .06em; text-transform: uppercase; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+.findings .fix:hover { background: var(--ink); color: var(--bg); }
+.dot { display: inline-block; width: 11px; height: 11px; border: 1px solid var(--rule-strong); vertical-align: -1px; margin-right: 3px; }
+
+/* step 3: matrix + always-open editor */
+.fix-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
+@media (max-width: 1080px) { .fix-grid { grid-template-columns: minmax(0, 1fr); } }
+.matrix-wrap { overflow-x: auto; }
+table.matrix { border-collapse: separate; border-spacing: 3px; font-size: 13px; }
+.matrix th { font: 500 12px var(--mono); color: var(--ink-2); padding: 0 2px 6px; vertical-align: bottom; white-space: nowrap; }
+.matrix .grp th { font: 700 11px var(--font); letter-spacing: .12em; text-transform: uppercase; text-align: left; padding: 0 4px 6px; border-bottom: 1px solid var(--rule); }
+.swbtn { display: grid; gap: 3px; justify-items: center; width: 100%; min-width: 46px; border: 0; background: none; padding: 3px; cursor: pointer; color: var(--ink-2); font: 500 11px var(--mono); }
+.swbtn i { display: block; width: 100%; height: 22px; border: 1px solid var(--rule); }
+.swbtn:hover i { outline: 2px solid var(--ink); outline-offset: 1px; }
+.swbtn[aria-pressed="true"] i { outline: 3px solid var(--accent); outline-offset: 1px; }
+.matrix th.rowh { text-align: left; padding: 2px 8px 2px 0; }
+.matrix th.rowh .swbtn { grid-template-columns: 26px auto; justify-items: start; align-items: center; min-width: 0; gap: 8px; font-size: 12px; color: var(--ink); }
+.matrix th.rowh .swbtn i { height: 26px; }
+.matrix td { min-width: 46px; height: 42px; text-align: center; font: 600 12.5px/1.2 var(--mono); padding: 2px; border: 0; background-clip: padding-box; }
+.matrix td small { display: block; font-weight: 400; font-size: 10.5px; }
+.matrix td.ok { background: var(--pass-soft); color: var(--pass); }
+.matrix td.bad { background: var(--fail-soft); color: var(--fail); }
+.matrix td.warn { background: var(--warn-soft); color: var(--warn); }
+.matrix td.info { background: var(--cell); color: var(--ink-2); }
+.matrix td .nb { font-weight: 700; }
+.matrix td.sep, .matrix th.sep { border-left: 24px solid transparent; background-clip: padding-box; }
+.matrix .grp th { border-bottom: 0; box-shadow: inset 0 -2px 0 var(--ink); }
+.matrix .grp th:first-child { box-shadow: none; }
+.matrix tr.sub th { text-align: left; font: 700 11px var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); padding: 14px 0 4px; }
+.key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); margin-top: 12px; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { width: 14px; height: 14px; display: inline-block; }
+
+.editor { position: sticky; top: 16px; border: 1px solid var(--rule); border-top: 4px solid var(--on-dark); background: var(--surface); padding: 18px; display: grid; gap: 16px; }
+.ed-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ed-head h3 { font-size: 19px; font-weight: 600; }
+.ed-head .kind { font: 700 11px var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.ed-prev { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: stretch; }
+.ed-prev .big { position: relative; min-height: 96px; border: 1px solid var(--rule); display: grid; place-items: center; }
+.ed-prev .big i { width: 54px; height: 54px; display: block; }
+.ed-prev .big span { position: absolute; left: 6px; bottom: 4px; font-size: 11px; font-weight: 700; }
+.ratios { display: grid; gap: 3px; font-size: 14px; align-content: center; }
+.ratios div { display: flex; justify-content: space-between; gap: 10px; }
+.badge { display: inline-flex; align-items: center; gap: 4px; font: 600 14px var(--mono); white-space: nowrap; }
+.badge svg.i { width: 16px; height: 16px; stroke-width: 2.4; }
+.badge.ok { color: var(--pass); } .badge.bad { color: var(--fail); } .badge.warn { color: var(--warn); } .badge.info { color: var(--ink-2); }
+.slider { display: grid; gap: 4px; }
+.slider label { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
+.slider label output { font: 500 14px var(--mono); color: var(--ink-2); }
+.track { position: relative; height: 30px; border: 1px solid var(--rule-strong); }
+.track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.track .thumb { position: absolute; top: -5px; bottom: -5px; width: 10px; margin-left: -5px; border: 3px solid #FFFFFF; box-shadow: 0 0 0 1px #000000, 0 2px 6px rgba(0,0,0,.35); pointer-events: none; }
+.track input:focus-visible ~ .thumb { box-shadow: 0 0 0 1px #000, 0 0 0 5px var(--accent); }
+.band { height: 8px; }
+:root { --fail-stripes: repeating-linear-gradient(135deg, var(--fail) 0 2px, transparent 2px 5px); }
+.band-key i.fail-key { background: var(--fail-stripes); }
+.band-key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.band-key i { display: inline-block; width: 16px; height: 8px; margin-right: 5px; vertical-align: middle; }
+.code { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; align-items: center; }
+.code input[type=color] { width: 48px; height: 44px; border: 1px solid var(--rule-strong); padding: 2px; background: var(--surface); cursor: pointer; }
+.code .hex { border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink); font: 500 18px var(--mono); padding: 9px 10px; text-transform: uppercase; width: 100%; min-width: 0; }
+.code .hex:focus { outline: none; border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.code .hex[aria-invalid="true"] { border-color: var(--fail); }
+.ed-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.tab-note { font-size: 15px; color: var(--ink-2); max-width: 75ch; margin: 0 0 14px; }
+.swbtn.static { cursor: default; }
+.exp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid var(--ink); }
+.exp { padding: 22px 24px 24px 0; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.exp + .exp { padding-left: 24px; border-left: 1px solid var(--rule); }
+@media (max-width: 900px) { .exp-grid { grid-template-columns: minmax(0, 1fr); } .exp + .exp { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); } }
+.exp h3 { font-size: 19px; font-weight: 600; margin: 0; }
+.exp p { font-size: 15px; color: var(--ink-2); margin: 0; }
+.exp textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; border: 1px solid var(--rule-strong); background: var(--surface); color: var(--ink); font: 13px/1.5 var(--mono); padding: 10px; }
+.exp .btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.strip { display: flex; height: 36px; border: 1px solid var(--rule); }
+.strip i { flex: 1; }
+.changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font: 500 14px var(--mono); }
+.changes li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.changes .n { font: 400 14px var(--font); color: var(--ink-2); min-width: 130px; }
+footer { border-top: 1px solid var(--rule); }
+footer .wrap { padding-block: 24px 40px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#add">Skip to step 1</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.6"/><path d="m21 15.5-4.5-4.5L6 20"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3.5 20.5h17"/><rect x="5" y="12" width="3.5" height="6" rx=".6"/><rect x="10.25" y="7" width="3.5" height="11" rx=".6"/><rect x="15.5" y="9.5" width="3.5" height="8.5" rx=".6"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.3 10h.01M12.6 10h.01M15.9 10h.01M18 10h.01M8 14.2h8"/></symbol>
+  <symbol id="i-order" viewBox="0 0 24 24"><path d="M3.5 6.5h9M3.5 12h6M3.5 17.5h9"/><path d="M13.5 12h7m-3-3 3 3-3 3"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 16.5 9 5 9-5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0"/><path d="m12 17 4-5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.5v5.5M12 16.3v.01" stroke="var(--surface)" stroke-width="2.4"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-again" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4.5V11h-6.5"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.2a5 5 0 0 1 5.5 5.3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.4 0 2-1 2-2s-.8-1.5-.8-2.5 1-1.8 2-1.8H18a3 3 0 0 0 3-3C21 6.8 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="14.5" cy="7" r="1.2"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M10 11v6M14 11v6M6.5 7l1 13h9l1-13M9.5 7V4h5v3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></symbol>
+  <symbol id="i-touch" viewBox="0 0 24 24"><rect x="4" y="4" width="8" height="16" rx="1"/><rect x="12" y="8" width="8" height="12" rx="1"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4"/><path d="M4.5 16v3a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-3"/></symbol>
+</svg>
+
+<div class="topbar">
+  <div class="wrap nav">
+    <a class="brand" href="./"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--on-dark)"/><path d="m9 16.5 4.5 4.5L23 11" fill="none" stroke="#111827" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Accessibility Check</a>
+    <nav class="tabs" aria-label="Tools"><a href="./">Report check</a><a href="palette.html" aria-current="page">Palette check</a></nav>
+    <div class="actions">
+      <button class="theme" id="theme" type="button" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span class="tlabel">Dark mode</span></button>
+    </div>
+  </div>
+</div>
+<header class="hero">
+  <div class="wrap hero-body">
+    <p class="eyebrow">Palette check</p>
+    <h1>Test your report colours before you build</h1>
+    <p class="lede">Paste your colours, sort them into backgrounds, chart colours and text colours, and see which combinations pass WCAG 2.2, also for people with colour vision deficiencies. Then adjust each colour until everything passes.</p>
+  </div>
+  <div class="wrap">
+    <ol class="flow" aria-label="Steps">
+      <li><a href="#add" id="f1" aria-current="step"><span class="num">1</span><span class="t">Add colours</span><span class="s" id="f1s">Paste and sort</span></a></li>
+      <li><a href="#check" id="f2"><span class="num">2</span><span class="t">Check</span><span class="s" id="f2s">Scores and preview</span></a></li>
+      <li><a href="#fix" id="f3"><span class="num">3</span><span class="t">Fix</span><span class="s" id="f3s">Adjust until it passes</span></a></li>
+      <li><a href="#export" id="f4"><span class="num">4</span><span class="t">Export</span><span class="s" id="f4s">Theme, hex codes, Coolors</span></a></li>
+    </ol>
+  </div>
+</header>
+
+<main>
+  <section class="step" id="add" aria-labelledby="h1s">
+    <div class="wrap">
+      <div class="step-head"><span class="num" aria-hidden="true">1</span><h2 id="h1s">Add your colours</h2><p>Paste them, then drag each colour to where it's used in the report. Or click colours to pick them (Shift-click picks a whole run) and move them with the bar that appears. × removes a colour.</p></div>
+      <div class="add-grid">
+        <div class="paste">
+          <label for="paste">Paste colours</label>
+          <p class="hint">Hex codes or a Coolors link land under “Not sorted yet”. A Power BI theme file is sorted for you. To sort them yourself as you paste, put a label in front of each list (a Coolors link works too):</p>
+          <pre class="fmt" aria-label="Example">canvas: #F3F2F1
+visual: #FFFFFF
+chart: coolors.co/118dff-12239e-e66c37
+text: #252423, #605E5C</pre>
+          <textarea id="paste" spellcheck="false" placeholder="#118DFF, #12239E, #E66C37 …"></textarea>
+          <div class="row"><button class="btn" type="button" id="do-import"><svg class="i" aria-hidden="true"><use href="#i-import"/></svg>Add colours</button><button class="link" type="button" id="example">Use Power BI's default theme</button></div>
+          <p class="msg" id="import-msg" role="status"></p>
+          <div class="quick">
+            <span class="ql" id="ql">Common colours</span>
+            <div class="qs" id="quick" role="group" aria-labelledby="ql"></div>
+            <p class="hint">Click to add one under “Not sorted yet”, or drag it straight to where it belongs.</p>
+          </div>
+        </div>
+        <div class="buckets" id="buckets">
+          <div class="bucket tray" data-kind="tray" id="tray-box" hidden>
+            <div class="bucket-head"><h3>Not sorted yet</h3><button class="link" type="button" id="all-chart">Make all chart colours</button><span class="bucket-tools"><button class="tool danger" type="button" data-clear="tray" data-act="delete"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete all<span class="sr"> unsorted colours</span></button></span></div>
+            <div class="chips" data-kind="tray" data-empty=""></div>
+          </div>
+          <div class="bucket" data-kind="bgs">
+            <div class="bucket-head"><h3>Backgrounds</h3><span class="bucket-tools"><button class="tool" type="button" data-clear="bgs" data-act="unsort"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Unsort all<span class="sr"> backgrounds</span></button><button class="tool danger" type="button" data-clear="bgs" data-act="delete"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete all<span class="sr"> backgrounds</span></button></span><span class="rule-text">canvas and visual backgrounds · ⇄ switches the role</span></div>
+            <div class="chips" data-kind="bgs" data-empty="Drop backgrounds here. Without one, white is assumed."></div>
+          </div>
+          <div class="bucket" data-kind="chart">
+            <div class="bucket-head"><h3>Chart colours</h3><span class="bucket-tools"><button class="tool" type="button" data-clear="chart" data-act="unsort"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Unsort all<span class="sr"> chart colours</span></button><button class="tool danger" type="button" data-clear="chart" data-act="delete"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete all<span class="sr"> chart colours</span></button></span><span class="rule-text">in series order · 3:1 on visual backgrounds</span></div>
+            <div class="chips" data-kind="chart" data-empty="Drop chart colours here, in series order."></div>
+          </div>
+          <div class="bucket" data-kind="text">
+            <div class="bucket-head"><h3>Text colours</h3><span class="bucket-tools"><button class="tool" type="button" data-clear="text" data-act="unsort"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Unsort all<span class="sr"> text colours</span></button><button class="tool danger" type="button" data-clear="text" data-act="delete"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete all<span class="sr"> text colours</span></button></span><span class="rule-text">4.5:1 on every background</span></div>
+            <div class="chips" data-kind="text" data-empty="Drop text colours here."></div>
+          </div>
+          
+        </div>
+      </div>
+      <p class="status-key"><span class="ok">✓ passes its contrast check</span><span class="bad">✗ too little contrast</span><span class="warn">◐ labels only: readable as a data label on chart colours, not as text on a background</span><span>Chart colours show their series number.</span></p>
+      <div class="sel-bar" id="sel-bar" hidden></div>
+      <div class="step-actions"><button class="btn" type="button" id="run">Check colours<svg class="i" aria-hidden="true"><use href="#i-down"/></svg></button><button class="btn ghost" type="button" id="copy-all">Copy colours</button><span class="muted" id="run-note" role="status"></span></div>
+    </div>
+  </section>
+
+  <section class="step" id="check" aria-labelledby="h2s" hidden>
+    <div class="wrap">
+      <div class="step-head"><span class="num" aria-hidden="true">2</span><h2 id="h2s">Check</h2><p>The same rules as the report check. Everything updates while you fix colours in step 3.</p></div>
+      <div class="scores" id="scores"></div>
+      <div class="check-grid">
+        <div>
+          <div class="sub-h"><h3>What to fix</h3></div>
+          <ul class="findings" id="findings"></ul>
+        </div>
+        <div>
+          <div class="sub-h"><h3>Preview</h3><div class="seg" role="group" aria-label="Colour vision" id="vision"></div></div>
+          <p class="vnote" id="vnote"></p>
+          <label class="toggle"><input type="checkbox" id="gap" checked> Thin gaps between touching colours (Power BI: border or spacing)</label>
+          <div class="preview" id="preview"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="fix" aria-labelledby="h3s" hidden>
+    <div class="wrap">
+      <div class="step-head"><span class="num" aria-hidden="true">3</span><h2 id="h3s">Fix</h2><p>Every colour against every other. Pick a colour in the table and adjust it on the right; the table, scores and preview update as you drag.</p></div>
+      <div class="fix-grid">
+        <div>
+          <p class="tab-note">Rows: your chart colours, then your text colours. Columns: the backgrounds, the other chart colours and the text colours. Click any colour in the table to adjust it on the right.</p>
+          <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
+          <div class="key">
+            <span><i style="background:var(--pass-soft);box-shadow:inset 0 0 0 1px var(--pass)"></i>green: passes</span>
+            <span><i style="background:var(--fail-soft);box-shadow:inset 0 0 0 1px var(--fail)"></i>red: fails a required check</span>
+            <span><i style="background:var(--warn-soft);box-shadow:inset 0 0 0 1px var(--warn)"></i>purple: only partly OK (“large only” text, or two chart colours that look alike, Δ under 10)</span>
+            <span><i style="background:var(--band);box-shadow:inset 0 0 0 1px var(--rule-strong)"></i>grey: not required, for information</span>
+            <span><b aria-hidden="true">Δ</b> colour difference (10 or more is easy to tell apart)</span>
+            <span><b aria-hidden="true">↔</b> neighbours in series order, which touch in stacked charts</span>
+          </div>
+        </div>
+        <aside class="editor" id="editor" aria-label="Colour editor">
+          <div class="ed-head"><h3 id="ed-title">Chart colour 1</h3><span class="kind" id="ed-kind"></span></div>
+          <div class="ed-prev"><div class="big" id="ed-big"><i id="ed-sw"></i></div><div class="ratios" id="ed-ratios"></div></div>
+          <div class="slider">
+            <label for="ed-l">Lightness <output id="ed-l-out"></output></label>
+            <div class="track" id="tr-l"><input type="range" id="ed-l" min="0" max="100" step="0.5"><span class="thumb"></span></div>
+            <div class="band" id="band-l" aria-hidden="true"></div>
+            <div class="band-key" id="band-key"></div>
+          </div>
+          <div class="slider">
+            <label for="ed-c">Colourfulness <output id="ed-c-out"></output></label>
+            <div class="track" id="tr-c"><input type="range" id="ed-c" min="0" max="0.37" step="0.005"><span class="thumb"></span></div>
+          </div>
+          <div class="slider">
+            <label for="ed-h">Hue <output id="ed-h-out"></output></label>
+            <div class="track" id="tr-h"><input type="range" id="ed-h" min="0" max="360" step="1"><span class="thumb"></span></div>
+          </div>
+          <div class="code"><input type="color" id="ed-native" aria-label="System colour picker"><input class="hex" id="ed-hex" aria-label="Hex code" maxlength="7" spellcheck="false" autocomplete="off"></div>
+          <div class="ed-actions"><button class="btn small" type="button" id="ed-nearest">Nearest passing shade</button><button class="btn small ghost" type="button" id="ed-undo">Undo changes</button></div>
+        </aside>
+      </div>
+    </div>
+  </section>
+  <section class="step" id="export" aria-labelledby="h4s" hidden>
+    <div class="wrap">
+      <div class="step-head"><span class="num" aria-hidden="true">4</span><h2 id="h4s">Take your palette with you</h2><p>Everything here includes your fixes.</p></div>
+      <div class="exp-grid">
+        <div class="exp">
+          <h3>Power BI theme</h3>
+          <p id="theme-note"></p>
+          <div class="btns"><button class="btn" type="button" id="dl-theme"><svg class="i" aria-hidden="true"><use href="#i-import"/></svg>Download theme</button><button class="btn ghost" type="button" id="copy-theme">Copy JSON</button></div>
+          <p class="msg" id="theme-msg" role="status"></p>
+        </div>
+        <div class="exp">
+          <h3>Hex codes</h3>
+          <textarea id="hex-out" readonly aria-label="Your colours as hex codes"></textarea>
+          <p>Paste this into step 1 any time to get the same sorting back.</p>
+          <div class="btns"><button class="btn ghost" type="button" id="copy-hex">Copy hex codes</button></div>
+          <p class="msg" id="hex-msg" role="status"></p>
+        </div>
+        <div class="exp">
+          <h3>Coolors</h3>
+          <div class="strip" id="strip" aria-hidden="true"></div>
+          <p>Your chart colours as a Coolors palette, to share or keep working on.</p>
+          <div class="btns"><a class="btn ghost" id="coolors" href="#" target="_blank" rel="noopener">Open in Coolors<span class="sr"> (opens in a new tab)</span></a></div>
+          <h3 style="margin-top:10px">What you changed</h3>
+          <ul class="changes" id="changes"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap"><span>Contrast thresholds follow WCAG 2.2: 4.5:1 for text, 3:1 for large text and for chart colours.</span><span>© <span id="year">2026</span> Karin Szilágyi. Open source under the <a href="https://github.com/KarinSzilagyi/a11y-check/blob/main/LICENSE">AGPL-3.0</a>: <a href="https://github.com/KarinSzilagyi/a11y-check">source code on GitHub</a>.</span></div></footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const icon = (n) => '<svg class="i" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
+
+/* ---------- colour maths ---------- */
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+function norm(h) { const m = HEX.exec(String(h).trim()); if (!m) return null; let s = m[1]; if (s.length === 3) s = s.replace(/./g, "$&$&"); return "#" + s.toUpperCase(); }
+const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const toHex = (c) => "#" + c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+const unlin = (v) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+const lum = (h) => { const [r, g, b] = rgb(h).map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+function ratio(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+const fmt = (r) => (Math.floor(r * 100) / 100).toFixed(2) + ":1";   // rounded down, like WCAG checkers
+function toOklab(h) {
+  const [r, g, b] = rgb(h).map(lin);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function oklabToLinear(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+}
+function toOklch(h) { const [L, a, b] = toOklab(h); let H = Math.atan2(b, a) * 180 / Math.PI; if (H < 0) H += 360; return [L, Math.hypot(a, b), H]; }
+// OKLCH to hex; colours outside sRGB keep lightness and hue and lose colourfulness until they fit.
+function fromOklch(L, C, H) {
+  const at = (c) => oklabToLinear(L, c * Math.cos(H * Math.PI / 180), c * Math.sin(H * Math.PI / 180));
+  const inGamut = (v) => v.every((x) => x >= -1e-4 && x <= 1 + 1e-4);
+  let v = at(C);
+  if (!inGamut(v)) { let lo = 0, hi = C; for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (inGamut(at(mid))) lo = mid; else hi = mid; } v = at(lo); }
+  return toHex(v.map((x) => unlin(Math.min(1, Math.max(0, x)))));
+}
+// Perceived colour difference: OKLab distance x 100 (about 2 = just noticeable, 10+ = clearly different).
+const dist = (a, b) => { const p = toOklab(a), q = toOklab(b); return 100 * Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); };
+// Colour vision deficiency simulation, Machado, Oliveira & Fernandes (2009), full severity, in linear RGB.
+const CVD = {
+  protan: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+  deutan: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]],
+  tritan: [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900]],
+};
+function see(h, mode) {
+  if (mode === "normal") return h;
+  const v = rgb(h).map(lin);
+  if (mode === "mono") { const y = 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; return toHex([y, y, y].map(unlin)); }
+  return toHex(CVD[mode].map((row) => unlin(Math.min(1, Math.max(0, row[0] * v[0] + row[1] * v[1] + row[2] * v[2])))));
+}
+// Nearest shade (same hue and colourfulness) that reaches `need` against every colour in `others`.
+function nearest(h, others, need) {
+  const ok = (x) => others.every((o) => ratio(x, o) >= need);
+  if (ok(h)) return h;
+  const [L, C, H] = toOklch(h);
+  for (let d = 0.005; d <= 1; d += 0.005) for (const s of [-1, 1]) { const l = L + s * d; if (l < 0 || l > 1) continue; const x = fromOklch(l, C, H); if (ok(x)) return x; }
+  return null;
+}
+
+/* ---------- state ---------- */
+const EXAMPLE = { bgs: [{ hex: "#F3F2F1", role: "canvas" }, { hex: "#FFFFFF", role: "visual" }], chart: ["#118DFF", "#12239E", "#E66C37", "#6B007B", "#E044A7", "#744EC2", "#D9B300", "#D64550"], text: ["#252423", "#605E5C", "#FFFFFF"] };
+const state = { tray: [], bgs: [], chart: [], text: [], vision: "normal", gap: true, ran: false, sel: null, theme: null, multi: new Set() };
+const VISION = [["normal", "Typical"], ["protan", "Protanopia"], ["deutan", "Deuteranopia"], ["tritan", "Tritanopia"], ["mono", "Greyscale"]];
+const VNOTE = {
+  normal: "Typical colour vision. Pick another option to see the palette as people with a colour vision deficiency see it (about 1 in 12 men and 1 in 200 women).",
+  protan: "Protanopia: no red-sensitive cones. Reds look dark and brownish. About 1 in 100 men.",
+  deutan: "Deuteranopia: no green-sensitive cones. Red, green, orange and brown get confused. The most common type, about 1 in 20 men in milder forms.",
+  tritan: "Tritanopia: no blue-sensitive cones. Blue and green, yellow and pink get confused. Rare, about 1 in 10,000.",
+  mono: "Greyscale: only lightness is left, as on a black-and-white printout or with achromatopsia.",
+};
+const hexOf = (kind, i) => kind === "bgs" ? state.bgs[i].hex : state[kind][i];
+// Original value of each edited colour (keyed by its current hex), so the export can list what changed.
+const origin = new Map();
+function setHex(kind, i, h) {
+  const old = hexOf(kind, i), o = origin.has(old) ? origin.get(old) : old;
+  origin.delete(old); if (o !== h) origin.set(h, o);
+  if (kind === "bgs") state.bgs[i].hex = h; else state[kind][i] = h;
+}
+const bgList = () => state.bgs.length ? state.bgs : [{ hex: "#FFFFFF", role: "canvas", assumed: true }];
+// Chart colours sit on visual backgrounds; without any, on the canvas.
+const chartBgs = () => { const b = bgList(), v = b.filter((x) => x.role === "visual"); return (v.length ? v : b).map((x) => x.hex); };
+const allBgs = () => bgList().map((x) => x.hex);
+const nameOf = (kind, i) => kind === "bgs" ? (state.bgs[i].role === "canvas" ? "Canvas " : "Visual background ") + (i + 1) : kind === "chart" ? "Chart colour " + (i + 1) : kind === "text" ? "Text colour " + (i + 1) : "Unsorted colour";
+const bestText = (c) => state.text.slice().sort((x, y) => ratio(y, c) - ratio(x, c))[0];
+const labelOk = (c) => { const b = bestText(c); return !!b && ratio(b, c) >= 4.5; };
+// A text colour unreadable on every background but used for labels on chart colours (white on dark bars).
+const labelOnly = (t) => allBgs().every((b) => ratio(t, b) < 3) && state.chart.some((c) => bestText(c) === t && labelOk(c));
+
+/* ---------- step 1: chips, drag and drop, keyboard mover ---------- */
+function chipHtml(kind, i) {
+  const h = hexOf(kind, i);
+  let sub = "";
+  if (kind === "chart") { const ok = chartBgs().every((b) => ratio(h, b) >= 3); sub = '<span class="st ' + (ok ? "ok" : "bad") + '">' + (ok ? "✓ " : "✗ ") + "no. " + (i + 1) + "</span>"; }
+  if (kind === "text") { const ok = allBgs().every((b) => ratio(h, b) >= 4.5), lo = labelOnly(h); sub = '<span class="st ' + (ok ? "ok" : lo ? "warn" : "bad") + '">' + (ok ? "✓ text" : lo ? "◐ labels only" : "✗ text") + "</span>"; }
+  const multi = state.multi.has(kind + ":" + i), name = nameOf(kind, i) + " " + h;
+  const role = kind === "bgs" ? '<button class="role-btn" type="button" data-role="' + i + '" aria-label="' + name + ' is the ' + (state.bgs[i].role === "canvas" ? "canvas. Switch to visual background" : "visual background. Switch to canvas") + '">' + state.bgs[i].role + ' <span aria-hidden="true">⇄</span></button>' : "";
+  return '<div class="chip-wrap"><button class="chip' + (multi ? " multi" : "") + '" type="button" draggable="true" data-kind="' + kind + '" data-i="' + i + '" aria-pressed="' + multi + '" aria-label="Pick ' + name + '"><span class="sw" style="background:' + h + '"></span><span class="hx">' + h + sub + "</span></button>" +
+    role + '<button class="chip-x" type="button" data-x="' + kind + ":" + i + '" aria-label="Remove ' + name + '">×</button></div>';
+}
+function renderBuckets() {
+  for (const kind of ["tray", "bgs", "chart", "text"]) {
+    const box = document.querySelector('.chips[data-kind="' + kind + '"]');
+    box.innerHTML = state[kind].map((_, i) => chipHtml(kind, i)).join("");
+  }
+  $("tray-box").hidden = !state.tray.length;
+  const n = state.multi.size;
+  $("sel-bar").hidden = !n;
+  if (n) {
+    const one = n === 1 ? [...state.multi][0].split(":") : null, kinds = new Set([...state.multi].map((k) => k.split(":")[0]));
+    const ord = one && one[0] === "chart" ? (+one[1] > 0 ? '<button class="link" type="button" data-many="earlier">Earlier in series</button>' : "") + (+one[1] < state.chart.length - 1 ? '<button class="link" type="button" data-many="later">Later in series</button>' : "") : "";
+    $("sel-bar").innerHTML = "<span><b>" + (one ? hexOf(one[0], +one[1]) : n + " colours") + " picked.</b> Drag, or move to:</span>" +
+      DEST.filter(([k]) => !(kinds.size === 1 && kinds.has(k))).map(([k, l]) => '<button class="link" type="button" data-many="' + k + '">' + l + "</button>").join("") + ord +
+      '<button class="link" type="button" data-many="remove">Remove</button><button class="link" type="button" data-many="clear">Clear</button>';
+  }
+  $("run").disabled = !state.chart.length && !state.text.length;
+  $("run-note").textContent = state.tray.length ? state.tray.length + " colour" + (state.tray.length > 1 ? "s are" : " is") + " not sorted yet and won't be checked." : "";
+}
+function move(fromKind, i, toKind, at) {
+  if (fromKind === toKind && at == null) return;
+  const take = fromKind === "bgs" ? state.bgs.splice(i, 1)[0].hex : state[fromKind].splice(i, 1)[0];
+  if (fromKind === toKind && at > i) at--;
+  const item = toKind === "bgs" ? { hex: take, role: state.bgs.length ? "visual" : "canvas" } : take;
+  const list = state[toKind]; at = at == null ? list.length : Math.min(at, list.length);
+  list.splice(at, 0, item);
+  state.multi.clear(); state.sel = { kind: toKind, i: at };
+  update();
+}
+// Move several colours at once, keeping their order. `at` is an index in the target list before removal.
+function moveMany(keys, toKind, at) {
+  const items = keys.map((k) => { const [kind, i] = k.split(":"); return { kind, i: +i }; })
+    .sort((a, b) => DEST.findIndex((d) => d[0] === a.kind) - DEST.findIndex((d) => d[0] === b.kind) || a.i - b.i);
+  const hexes = items.map((x) => hexOf(x.kind, x.i));
+  if (at != null) at -= items.filter((x) => x.kind === toKind && x.i < at).length;
+  [...items].sort((a, b) => b.i - a.i).forEach((x) => state[x.kind].splice(x.i, 1));
+  const list = state[toKind]; at = at == null ? list.length : Math.min(Math.max(at, 0), list.length);
+  list.splice(at, 0, ...hexes.map((h, n) => toKind === "bgs" ? { hex: h, role: list.length === 0 && n === 0 ? "canvas" : "visual" } : h));
+  state.multi.clear(); state.sel = { kind: toKind, i: at };
+  update();
+}
+function addHex(h, toKind, at) {
+  const list = state[toKind];
+  if (list.some((x) => (x.hex || x) === h)) { $("import-msg").className = "msg"; $("import-msg").textContent = h + " is already there."; return; } at = at == null ? list.length : at;
+  list.splice(at, 0, toKind === "bgs" ? { hex: h, role: list.length ? "visual" : "canvas" } : h);
+  state.sel = { kind: toKind, i: at }; update();
+}
+// Clear a whole group: back to "Not sorted yet", or delete. Deleting can be undone from the message.
+let undoSnap = null, anchor = null;
+$("buckets").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-clear]"); if (!b) return;
+  const kind = b.dataset.clear, list = state[kind], n = list.length, name = { tray: "unsorted", bgs: "background", chart: "chart", text: "text" }[kind];
+  if (!n) { $("run-note").textContent = "Nothing to clear there."; return; }
+  undoSnap = JSON.stringify({ tray: state.tray, bgs: state.bgs, chart: state.chart, text: state.text });
+  const hexes = list.map((x) => x.hex || x);
+  state[kind] = []; state.multi.clear(); state.sel = null;
+  if (b.dataset.act === "unsort") state.tray.push(...hexes);
+  update();
+  $("run-note").innerHTML = (b.dataset.act === "unsort" ? n + " " + name + " colour" + (n > 1 ? "s" : "") + " moved to “Not sorted yet”." : n + " " + name + " colour" + (n > 1 ? "s" : "") + " deleted.") + ' <button class="link" type="button" id="undo-clear">Undo</button>';
+});
+document.addEventListener("click", (e) => {
+  if (e.target.id !== "undo-clear" || !undoSnap) return;
+  Object.assign(state, JSON.parse(undoSnap)); undoSnap = null; state.multi.clear(); update(); $("run-note").textContent = "Restored.";
+});
+let drag = null;
+$("buckets").addEventListener("dragstart", (e) => { const c = e.target.closest(".chip"); if (!c) return; drag = { kind: c.dataset.kind, i: +c.dataset.i };
+  if (state.multi.has(c.dataset.kind + ":" + c.dataset.i) && state.multi.size > 1) { drag.many = [...state.multi]; document.querySelectorAll(".chip.multi").forEach((x) => x.classList.add("dragging")); } c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.dataset.kind + ":" + c.dataset.i); });
+$("buckets").addEventListener("dragend", (e) => { document.querySelectorAll(".chip.dragging").forEach((x) => x.classList.remove("dragging")); document.querySelectorAll(".bucket.over").forEach((b) => b.classList.remove("over")); drag = null; });
+$("buckets").addEventListener("dragover", (e) => { const b = e.target.closest(".bucket"); if (!b || !drag) return; e.preventDefault(); document.querySelectorAll(".bucket.over").forEach((x) => x !== b && x.classList.remove("over")); b.classList.add("over"); });
+$("buckets").addEventListener("dragleave", (e) => { const b = e.target.closest(".bucket"); if (b && !b.contains(e.relatedTarget)) b.classList.remove("over"); });
+$("buckets").addEventListener("drop", (e) => {
+  const b = e.target.closest(".bucket"); if (!b || !drag) return; e.preventDefault(); b.classList.remove("over");
+  const onChip = e.target.closest(".chip");
+  let at = null;
+  if (onChip && onChip.dataset.kind === b.dataset.kind) { const r = onChip.getBoundingClientRect(); at = +onChip.dataset.i + (e.clientX > r.left + r.width / 2 ? 1 : 0); }
+  if (drag.quick) addHex(drag.quick, b.dataset.kind, at);
+  else if (drag.many) moveMany(drag.many, b.dataset.kind, at);
+  else move(drag.kind, drag.i, b.dataset.kind, at);
+  drag = null;
+});
+$("buckets").addEventListener("click", (e) => {
+  const x = e.target.closest("[data-x]");
+  if (x) { const [kind, i] = x.dataset.x.split(":"); state[kind].splice(+i, 1); state.multi.clear(); state.sel = null; update();
+    const next = document.querySelector('.chip[data-kind="' + kind + '"][data-i="' + Math.min(+i, state[kind].length - 1) + '"]'); (next || $("paste")).focus(); return; }
+  const r = e.target.closest("[data-role]");
+  if (r) { const i = +r.dataset.role; state.bgs[i].role = state.bgs[i].role === "canvas" ? "visual" : "canvas"; update(); const n = document.querySelector('[data-role="' + i + '"]'); if (n) n.focus(); return; }
+  const c = e.target.closest(".chip"); if (!c) return;
+  const kind = c.dataset.kind, i = +c.dataset.i, key = kind + ":" + i;
+  // Click (or Ctrl-click) picks or unpicks one. Shift-click picks everything from the last clicked colour to this one (same group).
+  if (e.shiftKey && anchor && anchor.kind === kind) {
+    if (!(e.ctrlKey || e.metaKey)) state.multi.clear();
+    for (let n = Math.min(anchor.i, i); n <= Math.max(anchor.i, i); n++) state.multi.add(kind + ":" + n);
+  } else { state.multi.has(key) ? state.multi.delete(key) : state.multi.add(key); anchor = { kind, i }; }
+  state.sel = { kind, i };
+  renderBuckets(); focusChip(kind, i);
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.multi.size) { state.multi.clear(); renderBuckets(); } });
+function focusChip(kind, i) { const c = document.querySelector('.chip[data-kind="' + kind + '"][data-i="' + i + '"]'); if (c) c.focus(); }
+$("sel-bar").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-many]"); if (!b) return; const a = b.dataset.many;
+  if (a === "clear") { state.multi.clear(); update(); return; }
+  if (a === "remove") { [...state.multi].map((k) => k.split(":")).sort((x, y) => y[1] - x[1]).forEach(([kind, i]) => state[kind].splice(+i, 1)); state.multi.clear(); state.sel = null; update(); return; }
+  if (a === "earlier" || a === "later") { const i = +[...state.multi][0].split(":")[1], to = a === "earlier" ? i - 1 : i + 1; move("chart", i, "chart", a === "earlier" ? i - 1 : i + 2); state.multi.add("chart:" + to); renderBuckets(); focusChip("chart", to); return; }
+  moveMany([...state.multi], a, null); focusSel();
+});
+function focusSel() { if (!state.sel) return; const c = document.querySelector('.chip[data-kind="' + state.sel.kind + '"][data-i="' + state.sel.i + '"]'); if (c) c.focus(); }
+const DEST = [["bgs", "Backgrounds"], ["chart", "Chart colours"], ["text", "Text colours"], ["tray", "Not sorted"]];
+/* ---------- quick colours ---------- */
+const QUICK = [["#FFFFFF", "white"], ["#F3F2F1", "light grey"], ["#C8C6C4", "grey"], ["#605E5C", "dark grey"], ["#252423", "near black"], ["#000000", "black"]];
+$("quick").innerHTML = QUICK.map(([h, n]) => '<button class="qbtn" type="button" draggable="true" data-hex="' + h + '" aria-label="Add ' + n + " " + h + '"><i style="background:' + h + '"></i>' + n + "</button>").join("");
+$("quick").addEventListener("click", (e) => { const b = e.target.closest(".qbtn"); if (!b) return; state.tray.push(b.dataset.hex); update(); $("import-msg").className = "msg"; $("import-msg").textContent = b.dataset.hex + " added under “Not sorted yet”."; });
+$("quick").addEventListener("dragstart", (e) => { const b = e.target.closest(".qbtn"); if (!b) return; drag = { quick: b.dataset.hex }; e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", b.dataset.hex); });
+$("quick").addEventListener("dragend", () => { document.querySelectorAll(".bucket.over").forEach((b) => b.classList.remove("over")); drag = null; });
+
+/* ---------- copy out: the same labelled format the paste box reads ---------- */
+function paletteText() {
+  const lines = [], canvas = state.bgs.filter((b) => b.role === "canvas"), visual = state.bgs.filter((b) => b.role === "visual");
+  if (canvas.length) lines.push("canvas: " + canvas.map((b) => b.hex).join(", "));
+  if (visual.length) lines.push("visual: " + visual.map((b) => b.hex).join(", "));
+  if (state.chart.length) lines.push("chart: " + state.chart.join(", "));
+  if (state.text.length) lines.push("text: " + state.text.join(", "));
+  if (state.tray.length) lines.push("unsorted: " + state.tray.join(", "));
+  return lines.join("\n");
+}
+$("copy-all").addEventListener("click", async () => {
+  const txt = paletteText(), m = $("run-note");
+  if (!txt) { m.textContent = "No colours to copy yet."; return; }
+  try { await navigator.clipboard.writeText(txt); m.textContent = "Copied. Paste it back here any time to get the same sorting."; }
+  catch (err) { const p = $("paste"); p.value = txt; p.focus(); p.select(); m.textContent = "Copying isn't allowed here, so the colours are selected in the paste box: press Ctrl+C."; }
+});
+
+/* ---------- paste ---------- */
+// Six-digit codes with or without #, three-digit codes only with #, so words in a link aren't read as colours.
+const findHex = (s) => [...String(s).matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})(?![0-9a-z])|(?<![0-9a-z#])([0-9a-f]{6})(?![0-9a-z])/gi)].map((m) => norm(m[1] || m[2])).filter(Boolean);
+const LABELS = [[/^(canvas|page|page background)$/, "canvas"], [/^(visual|visuals|visual backgrounds?|card)$/, "visual"], [/^(backgrounds?|bgs?)$/, "bg"],
+  [/^(charts?|chart colou?rs|data|data colou?rs|datacolors|series|palette)$/, "chart"], [/^(texts?|text colou?rs|fonts?|foreground|labels?)$/, "text"], [/^(unsorted|other|not sorted)$/, "tray"]];
+function parseLabelled(raw) {
+  const parts = raw.split(/\n|;(?=\s*[a-z][a-z ]*\s*[:=])/i), out = { canvas: [], visual: [], bg: [], chart: [], text: [], tray: [] };
+  let cur = "tray", any = false;
+  for (const part of parts) {
+    const m = /^\s*([a-z][a-z ]*?)\s*[:=]\s*(.*)$/is.exec(part);
+    const lab = m && LABELS.find(([re]) => re.test(m[1].trim().toLowerCase()));
+    if (lab) { cur = lab[1]; any = true; out[cur].push(...findHex(m[2])); } else out[cur].push(...findHex(part));
+  }
+  return any ? out : null;
+}
+function parse(raw) {
+  try {
+    const j = JSON.parse(raw);
+    const bgs = [];
+    const solid = (v) => Array.isArray(v) && v[0] && v[0].color && v[0].color.solid && norm(v[0].color.solid.color || "");
+    const page = j.visualStyles && j.visualStyles.page && j.visualStyles.page["*"] && solid(j.visualStyles.page["*"].background);
+    if (page) bgs.push({ hex: page, role: "canvas" }); else if (norm(j.background || "")) bgs.push({ hex: norm(j.background), role: "canvas" });
+    const vis = j.visualStyles && j.visualStyles["*"] && j.visualStyles["*"]["*"] && j.visualStyles["*"]["*"].background;
+    const vh = vis && vis[0] && vis[0].color && vis[0].color.solid && norm(vis[0].color.solid.color || "");
+    if (vh && !bgs.some((b) => b.hex === vh)) bgs.push({ hex: vh, role: "visual" });
+    return { theme: true, raw: j, bgs, chart: (j.dataColors || []).map(norm).filter(Boolean), text: [...new Set([j.foreground, j.foregroundNeutralSecondary, j.foregroundNeutralTertiary].map((x) => x && norm(x)).filter(Boolean))] };
+  } catch (e) {
+    const lab = parseLabelled(raw);
+    if (lab) return { theme: false, labelled: lab };
+    return { theme: false, list: findHex(raw) };
+  }
+}
+$("do-import").addEventListener("click", () => {
+  const r = parse($("paste").value.trim()), msg = $("import-msg"); msg.className = "msg";
+  if (r.theme) {
+    if (!r.chart.length && !r.text.length && !r.bgs.length) { msg.className = "msg err"; msg.textContent = "That theme has no dataColors, background or foreground."; return; }
+    if (r.bgs.length) state.bgs = r.bgs; if (r.chart.length) state.chart = r.chart; if (r.text.length) state.text = r.text;
+    if (r.theme) { state.theme = r.raw; origin.clear(); }
+    msg.textContent = "Theme added: " + r.bgs.length + " backgrounds, " + r.chart.length + " chart colours, " + r.text.length + " text colours.";
+  } else if (r.labelled) {
+    const L = r.labelled, bgHex = L.canvas.concat(L.bg, L.visual), n = bgHex.length + L.chart.length + L.text.length + L.tray.length;
+    if (!n) { msg.className = "msg err"; msg.textContent = "No colours found after the labels. Use hex codes like #118DFF or a Coolors link."; return; }
+    const bgs = L.canvas.map((h) => ({ hex: h, role: "canvas" })).concat(L.bg.map((h, k) => ({ hex: h, role: !L.canvas.length && k === 0 ? "canvas" : "visual" })), L.visual.map((h) => ({ hex: h, role: "visual" })));
+    const done = [];
+    if (bgs.length) { state.bgs = bgs; done.push(bgs.length + " background" + (bgs.length > 1 ? "s" : "")); }
+    if (L.chart.length) { state.chart = L.chart; done.push(L.chart.length + " chart colour" + (L.chart.length > 1 ? "s" : "")); }
+    if (L.text.length) { state.text = L.text; done.push(L.text.length + " text colour" + (L.text.length > 1 ? "s" : "")); }
+    if (L.tray.length) { state.tray.push(...L.tray); done.push(L.tray.length + " unsorted"); }
+    state.theme = null; origin.clear(); state.multi.clear();
+    msg.textContent = "Sorted as labelled: " + done.join(", ") + ". Lists you labelled replace what was there.";
+  } else {
+    if (!r.list.length) { msg.className = "msg err"; msg.textContent = "No colours found. Use hex codes like #118DFF, a Coolors link or a theme file."; return; }
+    state.tray.push(...r.list);
+    msg.textContent = r.list.length + " colours added under “Not sorted yet”. Drag them to backgrounds, chart colours or text colours.";
+  }
+  $("paste").value = ""; state.sel = null; update();
+});
+$("example").addEventListener("click", () => { state.theme = null; origin.clear(); state.bgs = EXAMPLE.bgs.map((b) => ({ ...b })); state.chart = EXAMPLE.chart.slice(); state.text = EXAMPLE.text.slice(); state.tray = []; state.sel = null; $("import-msg").className = "msg"; $("import-msg").textContent = "Power BI's default theme added, with a light grey canvas and white visuals."; update(); });
+$("all-chart").addEventListener("click", () => { state.chart.push(...state.tray); state.tray = []; state.sel = null; update(); });
+$("run").addEventListener("click", () => { state.ran = true; if (!state.sel || !["bgs", "chart", "text"].includes(state.sel.kind)) state.sel = firstProblem(); update(); $("check").scrollIntoView({ behavior: "smooth" }); });
+
+/* ---------- step 2: checks ---------- */
+function checks() {
+  const out = { bgc: [], touch: [], text: [], label: [] }, cb = chartBgs(), ab = allBgs();
+  state.chart.forEach((c, i) => cb.forEach((b) => out.bgc.push({ pass: ratio(c, b) >= 3, i, c, b, r: ratio(c, b) })));
+  if (!state.gap) for (let i = 0; i + 1 < state.chart.length; i++) { const r = ratio(state.chart[i], state.chart[i + 1]); out.touch.push({ pass: r >= 3, i, r }); }
+  state.text.forEach((t, i) => { if (labelOnly(t)) return; ab.forEach((b) => { const r = ratio(t, b); out.text.push({ pass: r >= 4.5, large: r >= 3, i, t, b, r }); }); });
+  state.chart.forEach((c, i) => { const best = bestText(c); out.label.push({ pass: labelOk(c), i, c, best, r: best ? ratio(best, c) : 0 }); });
+  return out;
+}
+// Colour-blind fix: nudge chart colours (smallest change first) until no two look alike
+// under protanopia, deuteranopia or tritanopia. A change is only kept if every other check
+// passes at least as often as before, so it never trades one problem for another.
+const CVD_MODES = ["protan", "deutan", "tritan", "mono"];
+let FIX_MODES = ["protan", "deutan", "tritan"];
+function cvdPairs(chart) {
+  const out = [];
+  for (const m of FIX_MODES) { const s = chart.map((c) => see(c, m)); for (let i = 0; i < chart.length; i++) for (let j = i + 1; j < chart.length; j++) if (dist(chart[i], chart[j]) >= 10 && dist(s[i], s[j]) < 10) out.push([m, i, j]); }
+  return out;
+}
+function cvdShortfall(chart, i, x, sims) {
+  let s = 0;
+  for (const m of FIX_MODES) { const sx = see(x, m); chart.forEach((c, j) => { if (j !== i) s += Math.max(0, 10 - dist(sx, sims[m][j])); }); }
+  return s;
+}
+// Every check that passes, as a set of keys, so a fix can prove it breaks none of them.
+function passing() {
+  const k = checks(), s = new Set();
+  k.bgc.forEach((x) => x.pass && s.add("bgc" + x.i + x.b)); k.touch.forEach((x) => x.pass && s.add("touch" + x.i));
+  k.text.forEach((x) => x.pass && s.add("text" + x.i + x.b)); k.label.forEach((x) => x.pass && s.add("label" + x.i));
+  return s;
+}
+const BLOCK = { bgc: "lose 3:1 against the background", label: "lose their readable data-label colour", text: "make a text colour fail", touch: "lose 3:1 against a neighbouring series", distinct: "look too much like one of your other chart colours" };
+function cvdFix(weight) {
+  const orig = state.chart.slice(), start = passing(), changed = new Map(), why = {};
+  for (let step = 0; step < 16 && cvdPairs(state.chart).length; step++) {
+    const chart = state.chart, involved = [...new Set(cvdPairs(chart).flatMap(([, i, j]) => [i, j]))];
+    const sims = Object.fromEntries(FIX_MODES.map((m) => [m, chart.map((c) => see(c, m))]));
+    const cands = [];
+    for (const i of involved) {
+      const c = chart[i], [L, C, H] = toOklch(c), base = cvdShortfall(chart, i, c, sims), seen = new Set();
+      // lightness in fine steps, colourfulness both scaled and added (greys have almost none), hue ±90°
+      for (let dl = -0.4; dl <= 0.401; dl += 0.025) for (const cc of [C * 0.5, C * 0.75, C, C * 1.3, C + 0.04, C + 0.08, C + 0.12]) for (let dh = -90; dh <= 90; dh += 10) {
+        const l = L + dl; if (l < 0.04 || l > 0.98) continue;
+        const x = fromOklch(l, Math.min(cc, 0.33), (H + dh + 360) % 360);
+        if (x === c || seen.has(x)) continue; seen.add(x);
+        const s = cvdShortfall(chart, i, x, sims);
+        if (!(s < base - 0.5)) continue;
+        if (chart.some((o, j) => j !== i && dist(x, o) < 10)) { why.distinct = (why.distinct || 0) + 1; continue; } // stay distinct for typical vision
+        cands.push({ i, x, score: s + weight * dist(orig[i], x) });
+      }
+    }
+    cands.sort((a, b) => a.score - b.score);
+    let done = false;
+    for (const cand of cands) {
+      const old = chart[cand.i]; chart[cand.i] = cand.x;
+      const now = passing(), lost = [...start].filter((key) => !now.has(key));
+      if (!lost.length) { changed.set(cand.i, cand.x); done = true; break; }
+      new Set(lost.map((key) => key.match(/^[a-z]+/)[0])).forEach((kind) => (why[kind] = (why[kind] || 0) + 1));
+      chart[cand.i] = old;
+    }
+    if (!done) break;
+  }
+  const leftPairs = cvdPairs(state.chart);
+  state.chart = orig; // the caller applies the changes through setHex, so the export lists them
+  const blockers = Object.entries(why).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => BLOCK[k]);
+  return { changes: [...changed].sort((a, b) => a[0] - b[0]).map(([i, x]) => [i, orig[i], x]).filter(([, o, x]) => o !== x), left: leftPairs, blockers };
+}
+function cvdMessage(r) {
+  const list = (a) => a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0];
+  const stuck = [...new Set(r.left.flatMap(([, i, j]) => [i + 1, j + 1]))].sort((a, b) => a - b);
+  let out = r.changes.length ? "<b>Changed</b> " + r.changes.map(([i, o, x]) => "colour " + (i + 1) + " " + dot(o) + o + " → " + dot(x) + x).join(", ") + ". Every check that passed before still passes. " : "";
+  if (r.left.length) out += (r.changes.length ? "Colours " : "<b>Colours ") + list(stuck) + (r.changes.length ? " still look alike" : "</b> can't be told apart by colour alone") +
+    (r.blockers.length ? ": every shade that would separate them would " + list(r.blockers) + "." : ".") +
+    " Change one of them by hand in step 3, or keep the colours and label those series directly or give them different markers.";
+  return out;
+}
+function firstProblem() {
+  const k = checks(), f = k.bgc.find((x) => !x.pass) || k.text.find((x) => !x.pass);
+  if (f) return { kind: f.c ? "chart" : "text", i: f.i };
+  return state.chart.length ? { kind: "chart", i: 0 } : state.text.length ? { kind: "text", i: 0 } : null;
+}
+function scoreCard(title, list, rule, empty) {
+  const n = list.length, p = list.filter((x) => x.pass).length, pct = n ? Math.round(100 * p / n) : 100;
+  return '<div class="score"><div class="t">' + title + "</div>" + (n ? '<div class="n">' + pct + " <small>" + p + " of " + n + " pass</small></div>" : '<div class="n">–</div>') +
+    '<div class="bar' + (pct === 100 ? "" : pct >= 70 ? " part" : " low") + '"><i style="width:' + (n ? pct : 0) + '%"></i></div><div class="r">' + (n ? rule : empty) + "</div></div>";
+}
+const dot = (h) => '<span class="dot" style="background:' + h + '"></span>';
+function renderCheck(k) {
+  const vis = state.bgs.some((b) => b.role === "visual");
+  $("scores").innerHTML =
+    scoreCard("Chart colours", k.bgc, "3:1 on " + (vis ? "every visual background" : "the background") + " (WCAG 1.4.11)") +
+    scoreCard("Touching colours", k.touch, "3:1 between neighbours in series order", "Not needed: gaps separate touching colours") +
+    scoreCard("Text", k.text, "4.5:1 on every background (WCAG 1.4.3)", "No text colours yet") +
+    scoreCard("Data labels", k.label, "a text colour with 4.5:1 on each chart colour", "No chart colours yet");
+  const items = [];
+  const byColour = {};
+  k.bgc.filter((x) => !x.pass).forEach((x) => (byColour[x.i] = byColour[x.i] || []).push(x));
+  Object.entries(byColour).forEach(([i, xs]) => { const c = state.chart[i], fix = nearest(c, chartBgs(), 3); items.push(["bad", dot(c) + "<b>Chart colour " + (+i + 1) + "</b> " + c + " has " + xs.map((x) => fmt(x.r) + " on " + dot(x.b) + x.b).join(", ") + "; needs 3:1." + (fix ? " Nearest passing shade: " + dot(fix) + fix + "." : ""), fix ? ["chart", +i, fix] : null]); });
+  k.touch.filter((x) => !x.pass).forEach((x) => items.push(["bad", dot(state.chart[x.i]) + dot(state.chart[x.i + 1]) + "<b>Colours " + (x.i + 1) + " and " + (x.i + 2) + "</b> touch in stacked charts and have " + fmt(x.r) + ". Add a border or spacing in Power BI, or reorder the series.", null]));
+  const tBy = {};
+  k.text.filter((x) => !x.pass).forEach((x) => (tBy[x.i] = tBy[x.i] || []).push(x));
+  Object.entries(tBy).forEach(([i, xs]) => { const t = state.text[i], fix = nearest(t, allBgs(), 4.5), large = xs.every((x) => x.large); items.push([large ? "warn" : "bad", dot(t) + "<b>Text colour " + (+i + 1) + "</b> " + t + " has " + xs.map((x) => fmt(x.r) + " on " + dot(x.b) + x.b).join(", ") + (large ? ": enough for large text (24 px, or 18.7 px bold) only." : ": too low for text.") + (fix ? " Nearest shade for all text: " + dot(fix) + fix + "." : ""), fix ? ["text", +i, fix] : null]); });
+  state.text.forEach((t, i) => { if (labelOnly(t)) items.push(["ok", dot(t) + "<b>Text colour " + (i + 1) + "</b> " + t + " only works on chart colours, so it counts as a data label colour. Don't use it for text on a background.", null]); });
+  k.label.filter((x) => !x.pass).forEach((x) => items.push(["warn", dot(x.c) + "<b>Chart colour " + (x.i + 1) + "</b>: no text colour reaches 4.5:1 on it (best " + (x.best || "–") + ", " + fmt(x.r) + "). Put data labels outside the bars, or add a text colour.", null]));
+  CVD_MODES.forEach((m) => {
+    const pairs = [];
+    for (let i = 0; i < state.chart.length; i++) for (let j = i + 1; j < state.chart.length; j++) { const a = state.chart[i], b = state.chart[j]; if (dist(a, b) >= 10 && dist(see(a, m), see(b, m)) < 10) pairs.push(dot(a) + dot(b) + (i + 1) + "&nbsp;and&nbsp;" + (j + 1)); }
+    if (pairs.length) items.push(["warn", (m === "mono" ? "<b>In greyscale</b> (printouts, achromatopsia)" : "<b>With " + VISION.find((v) => v[0] === m)[1].toLowerCase() + "</b>") + " these colours look alike: " + pairs.join(", ") + ". Label series directly or use different markers, so colour isn't the only clue." + (m === "mono" ? " Not a WCAG requirement: telling 5 or more colours apart in greyscale usually means making some of them much darker." : ""), [m === "mono" ? "mono" : "cvd"]]);
+  });
+  if (state.cvdNote) { items.push([/can.t be told|still look/.test(state.cvdNote.html) ? "warn" : "ok", state.cvdNote.html, state.cvdNote.fix || null]); state.cvdNote = null; }
+  if (!items.some((x) => x[0] !== "ok")) items.unshift(["ok", "Every check passes. Keep legends or data labels anyway: colour must never be the only way to tell series apart.", null]);
+  $("findings").innerHTML = items.map(([cls, html, fix], n) => '<li class="' + cls + '">' + icon(cls === "ok" ? "check" : cls === "bad" ? "x" : "warn") + "<span>" + html + "</span>" + (fix ? '<button class="fix" type="button" data-n="' + n + '">' + (fix[0] === "cvd" ? "Separate colours" : fix[0] === "mono" ? "Separate in greyscale too" : fix[0] === "addlabel" ? "Add " + fix[1] + " for labels and separate" : "Use " + fix[2]) + "</button>" : "<span></span>") + "</li>").join("");
+  $("findings").onclick = (e) => { const b = e.target.closest("[data-n]"); if (!b) return; const f = items[+b.dataset.n][2];
+    if (f[0] === "cvd" || f[0] === "mono" || f[0] === "addlabel") {
+      if (b.disabled) return;
+      if (f[0] === "addlabel") state.text.push(f[1]); else FIX_MODES = f[0] === "mono" ? CVD_MODES.slice() : ["protan", "deutan", "tritan"];
+      $("findings").querySelectorAll('button.fix').forEach((x) => { const k = items[+x.dataset.n][2][0]; if (k === "cvd" || k === "mono" || k === "addlabel") { x.disabled = true; x.textContent = "Working…"; } });
+      setTimeout(() => {
+      // small changes first; only if pairs remain, allow bigger ones
+      const run = () => { let r = cvdFix(0.3); if (r.left.length) { const r2 = cvdFix(0.1); if (r2.left.length < r.left.length) r = r2; } return r; };
+      const r = run();
+      // Data labels blocking? A label colour at the other end (white for dark shades, black for light ones) frees up half the lightness range.
+      let offer = null;
+      if (r.left.length && f[0] !== "addlabel") {
+        const lum = (h) => toOklab(h)[0], extra = !state.text.some((x) => lum(x) > 0.9) ? "#FFFFFF" : !state.text.some((x) => lum(x) < 0.25) ? "#000000" : null;
+        if (extra) { state.text.push(extra); const r2 = run(); state.text.pop(); if (r2.left.length < r.left.length) offer = extra; }
+      }
+      r.changes.forEach(([i, , x]) => setHex("chart", i, x));
+      state.cvdNote = { html: cvdMessage(r) + (offer ? " Your data-label colours are part of the problem: with only " + (offer === "#FFFFFF" ? "dark" : "light") + " text for labels, every chart colour has to stay " + (offer === "#FFFFFF" ? "light" : "dark") + " enough for it, which leaves too narrow a lightness range. Adding " + dot(offer) + offer + " as a data-label colour solves this." : ""), fix: offer ? ["addlabel", offer] : null };
+      if (r.changes.length) { state.sel = { kind: "chart", i: r.changes[0][0] }; edLoad(); }
+      update(); }, 30); return;
+    }
+    setHex(f[0], f[1], f[2]); state.sel = { kind: f[0], i: f[1] }; edLoad(); update(); };
+  $("vision").innerHTML = VISION.map(([v, l]) => '<button type="button" data-v="' + v + '" aria-pressed="' + (state.vision === v) + '">' + l + "</button>").join("");
+  $("vnote").textContent = VNOTE[state.vision];
+  renderPreview();
+}
+$("vision").addEventListener("click", (e) => { const b = e.target.closest("[data-v]"); if (!b) return; state.vision = b.dataset.v; update(); $("vision").querySelector('[data-v="' + state.vision + '"]').focus(); });
+$("gap").addEventListener("change", (e) => { state.gap = e.target.checked; update(); });
+function renderPreview() {
+  const v = state.vision, cs = state.chart.map((c) => see(c, v));
+  const panels = bgList().map((b) => {
+    const bg = see(b.hex, v), axis = see(bestOn(b.hex), v);
+    let body = "";
+    if (b.role === "visual" || !state.bgs.some((x) => x.role === "visual")) {
+      const W = 420, H = 190, n = 6, pad = 30, step = (W - pad - 6) / n, bw = step * .62;
+      let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Sample stacked column chart on ' + b.hex + '">';
+      for (let col = 0; col < n; col++) {
+        let y = 165; const x = pad + col * step + (step - bw) / 2;
+        cs.forEach((c, s) => { const h = 4 + ((col * 7 + s * 13) % 11) * (130 / Math.max(cs.length, 1)) / 8; y -= h; svg += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + c + '"' + (state.gap ? ' stroke="' + bg + '" stroke-width="1.5"' : "") + "/>"; });
+        svg += '<text x="' + (x + bw / 2).toFixed(1) + '" y="182" text-anchor="middle" font-size="12" fill="' + axis + '" font-family="Segoe UI, sans-serif">' + ["Jan", "Feb", "Mar", "Apr", "May", "Jun"][col] + "</text>";
+      }
+      svg += '<line x1="' + pad + '" x2="' + W + '" y1="165" y2="165" stroke="' + axis + '"/></svg>';
+      body = svg + '<div class="legend" style="color:' + axis + '">' + cs.map((c, i) => '<span><i style="background:' + c + '"></i>Series ' + (i + 1) + "</span>").join("") + "</div>";
+    }
+    const texts = state.text.filter((t) => !labelOnly(t)).map((t) => '<span style="color:' + see(t, v) + '"><span class="big">€ 1.24 M</span> ' + fmt(ratio(t, b.hex)) + "</span>").join("");
+    return '<div class="canvas" style="background:' + bg + ";color:" + axis + '"><span class="cap">' + (b.assumed ? "White (assumed)" : (b.role === "canvas" ? "Canvas " : "Visual background ") + b.hex) + "</span>" + body + '<div class="textrow">' + texts + "</div></div>";
+  });
+  const labels = '<div class="canvas" style="background:var(--surface)"><span class="cap">Data labels on chart colours</span><div class="labels">' + state.chart.map((c) => '<span style="background:' + see(c, v) + ";color:" + see(bestText(c) || "#000000", v) + '">42%</span>').join("") + "</div></div>";
+  $("preview").innerHTML = panels.join("") + (state.chart.length && state.text.length ? labels : "");
+}
+const bestOn = (bg) => state.text.slice().sort((x, y) => ratio(y, bg) - ratio(x, bg))[0] || (lum(bg) > .18 ? "#000000" : "#FFFFFF");
+
+/* ---------- step 3: matrix ---------- */
+function swBtn(kind, i, label) {
+  const h = hexOf(kind, i), sel = state.sel && state.sel.kind === kind && state.sel.i === i;
+  return '<button class="swbtn" type="button" data-kind="' + kind + '" data-i="' + i + '" aria-pressed="' + sel + '" aria-label="Edit ' + nameOf(kind, i) + " " + h + '"><i style="background:' + see(h, state.vision) + '"></i>' + label + "</button>";
+}
+function cell(cls, r, extra, title) { return '<td class="' + cls + '" title="' + title + '">' + fmt(r).replace(":1", "") + (extra ? "<small>" + extra + "</small>" : "") + "</td>"; }
+function renderMatrix() {
+  const v = state.vision, S = (h) => see(h, v), B = bgList(), C = state.chart, T = state.text, cb = chartBgs();
+  const real = state.bgs.length > 0;
+  const bgHead = (i, label) => real ? swBtn("bgs", i, label) : '<span class="swbtn static"><i style="background:#FFFFFF"></i>white</span>';
+  const sep = (j) => (j === 0 ? " sep" : "");
+  const textBgCell = (x, b, i) => { const lo = labelOnly(x), r = ratio(S(x), S(b)); return cell(lo ? "info" : r >= 4.5 ? "ok" : r >= 3 ? "warn" : "bad", r, lo ? "labels" : r >= 4.5 ? "" : r >= 3 ? "large only" : "", "Text colour " + (i + 1) + " on " + b + ", needs 4.5:1 (3:1 for large text)"); };
+  const chartBgCell = (c, b, i) => { const r = ratio(S(c), S(b)), req = cb.includes(b); return cell(req ? (r >= 3 ? "ok" : "bad") : "info", r, req ? "" : "canvas", "Chart colour " + (i + 1) + " on " + b + (req ? ", needs 3:1" : ", charts don't sit on the canvas")); };
+  const labelCell = (c, x, ci, ti, j) => { const r = ratio(S(c), S(x)); return cell((r >= 4.5 ? "ok" : "info") + sep(j), r, bestText(c) === x ? "best" : "", "Text colour " + (ti + 1) + " as a data label on chart colour " + (ci + 1)); };
+  const cols = 1 + B.length + C.length + T.length;
+  const gs = [["Backgrounds", B.length], ["Chart colours", C.length], ["Text colours", T.length]].filter((g) => g[1]);
+  let h = '<thead><tr class="grp"><th></th>' + gs.map((g, k) => "<th" + (k ? ' class="sep"' : "") + ' colspan="' + g[1] + '">' + g[0] + "</th>").join("") + "</tr><tr><th></th>" +
+    B.map((b, i) => "<th>" + bgHead(i, b.role === "canvas" ? "canvas" : "visual") + "</th>").join("") +
+    C.map((c, i) => '<th class="' + sep(i) + '">' + swBtn("chart", i, String(i + 1)) + "</th>").join("") +
+    T.map((x, i) => '<th class="' + sep(i) + '">' + swBtn("text", i, "T" + (i + 1)) + "</th>").join("") + "</tr></thead><tbody>";
+  if (C.length) h += '<tr class="sub"><th colspan="' + cols + '">Chart colours · 3:1 on visual backgrounds · text columns are data labels</th></tr>';
+  C.forEach((c, i) => {
+    h += '<tr><th class="rowh">' + swBtn("chart", i, (i + 1) + " " + c) + "</th>" + B.map((b) => chartBgCell(c, b.hex, i)).join("");
+    C.forEach((d, j) => {
+      if (j === i) { h += '<td class="' + sep(j) + '"></td>'; return; }
+      const r = ratio(S(c), S(d)), dd = dist(S(c), S(d)), touch = Math.abs(i - j) === 1;
+      const cls = touch && !state.gap ? (r >= 3 ? "ok" : "bad") : (r >= 3 ? "ok" : dd < 10 ? "warn" : "info");
+      h += cell(cls + sep(j), r, "Δ " + dd.toFixed(0) + (touch ? ' <span class="nb" aria-label="neighbours">↔</span>' : ""), "Chart colours " + (i + 1) + " and " + (j + 1) + (touch ? ", neighbours" : "") + "; colour distance " + dd.toFixed(0));
+    });
+    T.forEach((x, j) => { h += labelCell(c, x, i, j, j); });
+    h += "</tr>";
+  });
+  if (T.length) h += '<tr class="sub"><th colspan="' + cols + '">Text colours · 4.5:1 on every background · chart columns are data labels</th></tr>';
+  T.forEach((x, i) => {
+    h += '<tr><th class="rowh">' + swBtn("text", i, "T" + (i + 1) + " " + x) + "</th>" + B.map((b) => textBgCell(x, b.hex, i)).join("");
+    C.forEach((c, j) => { h += labelCell(c, x, j, i, j); });
+    T.forEach((u, j) => { h += '<td class="' + sep(j).trim() + '"></td>'; });
+    h += "</tr>";
+  });
+  if (!C.length && !T.length) h += '<tr><td class="info" style="text-align:left;padding:10px">No colours yet. Add some in step 1.</td></tr>';
+  $("matrix").innerHTML = h + "</tbody>";
+}
+$("matrix").addEventListener("click", (e) => {
+  const b = e.target.closest("button.swbtn"); if (!b) return;
+  state.sel = { kind: b.dataset.kind, i: +b.dataset.i }; edLoad(); update();
+  const q = '.swbtn[data-kind="' + state.sel.kind + '"][data-i="' + state.sel.i + '"]';
+  const n = document.querySelector("#matrix .rowh " + q) || document.querySelector("#matrix " + q); if (n) n.focus();
+});
+
+/* ---------- step 4: export ---------- */
+function themeJson() {
+  const j = state.theme ? JSON.parse(JSON.stringify(state.theme)) : { name: "Accessible palette" };
+  if (state.chart.length) j.dataColors = state.chart.slice();
+  const texts = state.text.filter((x) => !labelOnly(x));
+  ["foreground", "foregroundNeutralSecondary", "foregroundNeutralTertiary"].forEach((key, n) => { if (texts[n]) j[key] = texts[n]; });
+  const canvas = state.bgs.find((b) => b.role === "canvas"), visual = state.bgs.find((b) => b.role === "visual");
+  const fill = (path, colour, extra) => {
+    let o = j; path.forEach((p) => { if (!o[p] || typeof o[p] !== "object") o[p] = {}; o = o[p]; });
+    const prev = Array.isArray(o.background) && o.background[0] ? o.background[0] : {};
+    o.background = [Object.assign({}, prev, extra, { color: { solid: { color: colour } } })];
+  };
+  if (canvas) fill(["visualStyles", "page", "*"], canvas.hex, { transparency: 0 });
+  if (visual) fill(["visualStyles", "*", "*"], visual.hex, { show: true, transparency: 0 });
+  if (visual || canvas) j.background = (visual || canvas).hex;
+  return JSON.stringify(j, null, 2);
+}
+function hexText() { return paletteText(); }
+function renderExport() {
+  $("hex-out").value = hexText();
+  $("strip").innerHTML = state.chart.map((c) => '<i style="background:' + c + '"></i>').join("");
+  $("coolors").href = "https://coolors.co/" + state.chart.map((c) => c.slice(1).toLowerCase()).join("-");
+  $("theme-note").textContent = (state.theme
+    ? "Your imported theme" + (state.theme.name ? " “" + state.theme.name + "”" : "") + " with the fixed colours; all its other settings stay as they were."
+    : "A theme file with your chart colours, text colours, page background and visual background.") + " Import it in Power BI Desktop under View › Themes › Browse for themes.";
+  const all = [];
+  state.bgs.forEach((b, i) => all.push([nameOf("bgs", i), b.hex]));
+  state.chart.forEach((c, i) => all.push([nameOf("chart", i), c]));
+  state.text.forEach((x, i) => all.push([nameOf("text", i), x]));
+  const ch = all.filter(([, h]) => origin.has(h));
+  $("changes").innerHTML = ch.length
+    ? ch.map(([n, h]) => '<li><span class="n">' + n + "</span>" + dot(origin.get(h)) + origin.get(h) + " → " + dot(h) + h + "</li>").join("")
+    : '<li><span class="n">No colours changed yet.</span></li>';
+  $("f4s").textContent = ch.length ? ch.length + " colour" + (ch.length > 1 ? "s" : "") + " changed" : "Theme, hex codes, Coolors";
+}
+async function copyText(text, msgId, area) {
+  const m = $(msgId);
+  try { await navigator.clipboard.writeText(text); m.textContent = "Copied."; }
+  catch (e) { if (area) { area.focus(); area.select(); } m.textContent = area ? "Press Ctrl+C to copy the selected text." : "Copying isn't allowed here. Use Download theme instead."; }
+}
+$("copy-hex").addEventListener("click", () => copyText(hexText(), "hex-msg", $("hex-out")));
+$("copy-theme").addEventListener("click", () => copyText(themeJson(), "theme-msg"));
+$("dl-theme").addEventListener("click", () => {
+  const name = ((state.theme && state.theme.name) || "accessible-palette").replace(/[^\w-]+/g, "-").toLowerCase() + ".json";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([themeJson()], { type: "application/json" })); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  $("theme-msg").textContent = "Downloaded " + name + ".";
+});
+
+/* ---------- step 3: editor (always open, edits live) ---------- */
+const ed = { L: 0, C: 0, H: 0, orig: null, key: "" };
+const edSel = () => state.sel && ["bgs", "chart", "text"].includes(state.sel.kind) && state.sel.i < state[state.sel.kind].length ? state.sel : null;
+function edRefs(s) {
+  if (s.kind === "chart") return { need: 3, against: chartBgs(), label: state.bgs.some((b) => b.role === "visual") ? "visual backgrounds" : "the background" };
+  if (s.kind === "text") return { need: 4.5, against: allBgs(), label: "every background" };
+  const isChartBg = chartBgs().includes(state.bgs[s.i].hex);
+  return { need: isChartBg ? 3 : 4.5, against: isChartBg ? state.chart.concat([]) : state.text.filter((t) => !labelOnly(t)), label: isChartBg ? "every chart colour" : "every text colour" };
+}
+function edLoad() { const s = edSel(); if (!s) return; const h = hexOf(s.kind, s.i); ed.orig = h; ed.key = s.kind + s.i; [ed.L, ed.C, ed.H] = toOklch(h); }
+function edApply(h) { const s = edSel(); if (!s) return; setHex(s.kind, s.i, h); update(true); }
+function renderEditor(fromHex) {
+  const s = edSel(); $("editor").hidden = !s; if (!s) return;
+  if (ed.key !== s.kind + s.i) edLoad();
+  const h = hexOf(s.kind, s.i), ref = edRefs(s);
+  $("ed-title").textContent = nameOf(s.kind, s.i);
+  $("ed-kind").textContent = s.kind === "bgs" ? "background" : s.kind === "chart" ? "chart colour" : "text colour";
+  const on = s.kind === "bgs" ? (state.chart[0] || state.text[0] || "#000000") : (ref.against[0] || "#FFFFFF");
+  $("ed-big").style.background = s.kind === "bgs" ? h : on;
+  // text shows "Aa" in the colour; chart colours and backgrounds show a swatch on its background
+  if (s.kind === "text") $("ed-big").innerHTML = '<span style="color:' + h + ';font:700 26px var(--font);position:static">Aa</span>';
+  else $("ed-big").innerHTML = '<i id="ed-sw" style="background:' + (s.kind === "bgs" ? on : h) + '"></i>';
+  const rows = ref.against.map((o) => [dot(o) + o, ratio(h, o), ref.need]);
+  if (s.kind === "chart" && !state.gap) [s.i - 1, s.i + 1].forEach((j) => { if (j >= 0 && j < state.chart.length) rows.push([dot(state.chart[j]) + "Colour " + (j + 1), ratio(h, state.chart[j]), 3]); });
+  if (s.kind === "chart") { const b = bestText(h); if (b) rows.push(["Label " + dot(b), ratio(h, b), 4.5]); }
+  $("ed-ratios").innerHTML = rows.slice(0, 7).map(([l, r, need]) => "<div><span>" + l + '</span><span class="badge ' + (r >= need ? "ok" : need === 4.5 && r >= 3 && s.kind === "text" ? "warn" : "bad") + '">' + icon(r >= need ? "check" : "x") + fmt(r) + "</span></div>").join("") + (rows.length > 7 ? '<div class="muted">and ' + (rows.length - 7) + " more</div>" : "") + (rows.length ? "" : '<div class="muted">Nothing to compare yet.</div>');
+  if (fromHex !== "hex") $("ed-hex").value = h;
+  $("ed-hex").removeAttribute("aria-invalid");
+  $("ed-native").value = h.toLowerCase();
+  $("ed-l").value = (ed.L * 100).toFixed(1); $("ed-c").value = ed.C.toFixed(3); $("ed-h").value = Math.round(ed.H);
+  $("ed-l-out").textContent = (ed.L * 100).toFixed(0) + " %"; $("ed-c-out").textContent = ed.C.toFixed(2); $("ed-h-out").textContent = Math.round(ed.H) + "°";
+  const stops = (f, n) => Array.from({ length: n + 1 }, (_, k) => f(k / n) + " " + (100 * k / n).toFixed(1) + "%").join(",");
+  $("tr-l").style.background = "linear-gradient(90deg," + stops((t) => fromOklch(t, ed.C, ed.H), 24) + ")";
+  $("tr-c").style.background = "linear-gradient(90deg," + stops((t) => fromOklch(ed.L, t * 0.37, ed.H), 16) + ")";
+  $("tr-h").style.background = "linear-gradient(90deg," + stops((t) => fromOklch(ed.L, Math.max(ed.C, 0.08), t * 360), 24) + ")";
+  [["tr-l", ed.L], ["tr-c", ed.C / 0.37], ["tr-h", ed.H / 360]].forEach(([id, t]) => { const th = $(id).querySelector(".thumb"); th.style.left = (100 * t).toFixed(2) + "%"; th.style.background = h; });
+  const band = [];
+  for (let k = 0; k <= 100; k++) { const x = fromOklch(k / 100, ed.C, ed.H); band.push((ref.against.length && ref.against.every((o) => ratio(x, o) >= ref.need) ? "var(--pass)" : "transparent") + " " + k + "%"); }
+  $("band-l").style.background = "linear-gradient(90deg," + band.join(",") + "), var(--fail-stripes)";
+  $("band-key").innerHTML = '<span><i style="background:var(--pass)"></i>' + ref.need + ":1 against " + ref.label + '</span><span><i class="fail-key"></i>too little contrast</span>';
+  $("ed-nearest").disabled = !ref.against.length || ref.against.every((o) => ratio(h, o) >= ref.need);
+  $("ed-undo").disabled = h === ed.orig;
+}
+$("ed-l").addEventListener("input", (e) => { ed.L = +e.target.value / 100; edApply(fromOklch(ed.L, ed.C, ed.H)); });
+$("ed-c").addEventListener("input", (e) => { ed.C = +e.target.value; edApply(fromOklch(ed.L, ed.C, ed.H)); });
+$("ed-h").addEventListener("input", (e) => { ed.H = +e.target.value; edApply(fromOklch(ed.L, ed.C, ed.H)); });
+$("ed-native").addEventListener("input", (e) => { const h = norm(e.target.value); [ed.L, ed.C, ed.H] = toOklch(h); edApply(h); });
+$("ed-hex").addEventListener("input", (e) => { const h = norm(e.target.value); if (!h) { e.target.setAttribute("aria-invalid", "true"); return; } [ed.L, ed.C, ed.H] = toOklch(h); const s = edSel(); setHex(s.kind, s.i, h); update(true, "hex"); });
+$("ed-nearest").addEventListener("click", () => { const s = edSel(), ref = edRefs(s), x = nearest(hexOf(s.kind, s.i), ref.against, ref.need); if (x) { [ed.L, ed.C, ed.H] = toOklch(x); edApply(x); } });
+$("ed-undo").addEventListener("click", () => { [ed.L, ed.C, ed.H] = toOklch(ed.orig); edApply(ed.orig); });
+
+/* ---------- render ---------- */
+let queued = false;
+function update(live, from) {
+  renderBuckets();
+  const ran = state.ran && (state.chart.length || state.text.length);
+  $("check").hidden = $("fix").hidden = $("export").hidden = !ran;
+  if (ran) { const k = checks(); renderCheck(k); renderMatrix(); renderExport(); renderEditor(from);
+    const bad = k.bgc.filter((x) => !x.pass).length + k.touch.filter((x) => !x.pass).length + k.text.filter((x) => !x.pass).length;
+    $("f2s").textContent = bad ? bad + " failed check" + (bad > 1 ? "s" : "") : "All required checks pass"; }
+  $("f1s").textContent = state.chart.length + state.text.length + state.bgs.length ? state.bgs.length + " bg · " + state.chart.length + " chart · " + state.text.length + " text" : "Paste and sort";
+}
+
+/* ---------- theme ---------- */
+const root = document.documentElement;
+const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+const paintTheme = () => { const d = isDark(); $("theme").setAttribute("aria-pressed", String(d)); $("theme").innerHTML = icon(d ? "sun" : "moon") + '<span class="tlabel">' + (d ? "Light mode" : "Dark mode") + "</span>"; $("theme").setAttribute("aria-label", d ? "Switch to light mode" : "Switch to dark mode"); };
+$("theme").addEventListener("click", () => { root.dataset.theme = isDark() ? "light" : "dark"; try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {} paintTheme(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintTheme);
+paintTheme();
+// Highlight the step in view.
+const io = new IntersectionObserver((es) => es.forEach((e) => { if (!e.isIntersecting) return; ["add", "check", "fix", "export"].forEach((id, n) => { const a = $("f" + (n + 1)); if (id === e.target.id) a.setAttribute("aria-current", "step"); else a.removeAttribute("aria-current"); }); }), { rootMargin: "-40% 0px -55% 0px" });
+["add", "check", "fix", "export"].forEach((id) => io.observe($(id)));
+$("year").textContent = new Date().getFullYear();
+update();
+</script>
+</body>
+</html>

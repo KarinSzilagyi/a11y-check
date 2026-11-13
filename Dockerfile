@@ -22,10 +22,11 @@ RUN apt-get update \
  && chmod -R a+rX /ms-playwright
 
 COPY audit/audit_accessibility.py /app/audit/
-COPY app.py /app/
+COPY app.py worker.py /app/
 COPY static /app/static
 
 USER app
 EXPOSE 8000
-# One worker: audits and results are kept in this process's memory.
+# One uvicorn worker. RUN_MODE=inline (default) keeps audits in this process's memory.
+# RUN_MODE=queue: the same image runs the checks as a job with `python worker.py`.
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
