@@ -3,6 +3,8 @@
 # Slim image: Debian + Python + Chromium's headless shell only. Microsoft's Playwright image ships
 # three browsers (~2 GB); a smaller image downloads faster when Azure starts the container cold.
 FROM python:3.12-slim-bookworm
+LABEL org.opencontainers.image.source="https://github.com/KarinSzilagyi/a11y-check" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PIP_NO_CACHE_DIR=1 \
