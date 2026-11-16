@@ -5,7 +5,7 @@ alt text, text contrast, chart colour contrast, keyboard access and tab order (w
 plus a list of the core and custom visuals used. It also clicks bookmark buttons and hovers chart
 tooltips, so reports that hide content behind buttons are checked too.
 
-**Try it:** https://www.dataschnitzel.at/a11y-check/
+**Try it:** https://a11y-api.dataschnitzel.at/
 
 ## What it checks
 
