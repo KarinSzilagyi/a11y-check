@@ -55,6 +55,17 @@
   color-scheme: dark;
 }
 
+/* Visual categories in "Visuals used": six hues checked as a set (lightness band, chroma, colour-blind
+   separation of neighbours, 3:1 against the page) in both themes. Squares stay grouped in a fixed order,
+   each category has a texture, and every square has a legend entry and a tooltip. */
+:root { --v-core: #3987E5; --v-custom: #D95926; --v-text: #199E70; --v-shape: #C98500; --v-image: #D55181; --v-button: #0CA30C;
+  --pat: #FFFFFF;
+  --tip-bg: #15181D; --tip-fg: #FFFFFF; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --v-core: #3987E5; --v-custom: #D95926; --v-text: #199E70;
+  --v-shape: #C98500; --v-image: #D55181; --v-button: #0CA30C; --pat: #111111; --tip-bg: #EEF1F5; --tip-fg: #15181D; } }
+:root[data-theme="dark"] { --v-core: #3987E5; --v-custom: #D95926; --v-text: #199E70;
+  --v-shape: #C98500; --v-image: #D55181; --v-button: #0CA30C; --pat: #111111; --tip-bg: #EEF1F5; --tip-fg: #15181D; }
+
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.55 var(--font); }
@@ -269,10 +280,18 @@ form.check label { font: 600 17px var(--head); }
 .stat p { font-size: 14px; color: var(--ink-2); }
 .stat.lead { padding-left: 0; }
 .stat.lead .big { color: var(--brand); }
-.u { width: 14px; height: 14px; display: inline-block; flex: none; }
-.u.core { background: var(--brand); }
-.u.custom { background: var(--custom); }
-.u.layout { width: 10px; height: 10px; border: 1.5px solid var(--rule-strong); }
+/* Every category has its own texture as well as its colour, so colour is never needed to tell them apart
+   (WCAG 1.4.1). One set of fills for both themes, each at least 3:1 against white and against the dark
+   surface; textures are white in light mode and near-black in dark mode, at least 3:1 on every fill (1.4.11). */
+.u { width: 14px; height: 14px; display: inline-block; flex: none; background-color: var(--c);
+  box-shadow: inset 0 0 0 1px var(--pat); }
+.u.core { --c: var(--v-core); }
+.u.custom { --c: var(--v-custom); background-image: repeating-linear-gradient(45deg, var(--pat) 0 1.5px, transparent 1.5px 4.5px); }
+.u.text { --c: var(--v-text); background-image: repeating-linear-gradient(180deg, transparent 0 3px, var(--pat) 3px 5px); }
+.u.shape { --c: var(--v-shape); box-shadow: inset 0 0 0 1px var(--pat), inset 0 0 0 3.5px var(--c), inset 0 0 0 5px var(--pat); }
+.u.image { --c: var(--v-image); background-image: radial-gradient(circle, var(--pat) 1.1px, transparent 1.5px); background-size: 4.5px 4.5px; background-position: center; }
+.u.button { --c: var(--v-button); background-image: radial-gradient(circle, var(--pat) 0 30%, transparent 32%); }
+.u.layout { width: 10px; height: 10px; border: 1.5px solid var(--rule-strong); box-shadow: none; }
 .pages { padding: 4px 20px; }
 .prow { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--rule); align-items: start; }
 .prow:last-child { border-bottom: 0; }
@@ -282,6 +301,45 @@ form.check label { font: 600 17px var(--head); }
 .squares .gap { width: 10px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 14px; color: var(--ink-2); }
 .legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend.grouped { gap: 10px 36px; font-size: 15px; color: var(--ink); }
+.legend .lg { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.legend .lg > b { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); width: 100%; }
+.legend em { font-style: normal; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.units { display: grid; gap: 12px; min-width: 0; }
+.uline { display: grid; gap: 6px; min-width: 0; }
+.ucap { font-size: 14px; color: var(--ink-2); }
+.sq { width: 18px; height: 18px; padding: 0; border: 0; cursor: pointer; flex: none; }
+.sq.u.shape { box-shadow: inset 0 0 0 1px var(--pat), inset 0 0 0 4.5px var(--c), inset 0 0 0 6.5px var(--pat); }
+.sq.u.image { background-size: 5px 5px; }
+.sq:hover, .sq:focus-visible, .sq[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.vtip { position: fixed; z-index: 30; max-width: 300px; background: var(--tip-bg); color: var(--tip-fg); padding: 8px 10px;
+  font-size: 13px; line-height: 1.4; pointer-events: none; }
+.vtip b { display: block; }
+.picked { min-height: 46px; background: var(--band); padding: 11px 16px; font-size: 15px; }
+.ldetail { display: grid; gap: 10px; }
+.ldetail > h3 { font-size: 20px; font-weight: 600; }
+.ldet > summary { padding: 14px 18px; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 10px; list-style: none; }
+.ldet > summary::-webkit-details-marker { display: none; }
+.ldet > summary::after { content: "+"; margin-left: auto; font: 600 18px var(--mono); color: var(--ink-2); }
+.ldet[open] > summary::after { content: "–"; }
+.ldet > summary em { font-style: normal; font-weight: 400; color: var(--ink-2); }
+.ldet .scroll { overflow-x: auto; padding: 0 18px 14px; }
+.ldet table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.ldet th { text-align: left; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+  padding: 0 12px 8px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.ldet td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.ldet tr:last-child td { border-bottom: 0; }
+.ldet td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ldet mark { background: var(--accent-soft); color: inherit; padding: 0 2px; }
+.pill { display: inline-block; font: 600 12px var(--mono); padding: 2px 8px; white-space: nowrap; }
+.pill.ok { background: var(--pass-soft); color: var(--pass); }
+.pill.bad { background: var(--fail-soft); color: var(--fail); }
+.pill.mid { background: var(--partial-soft); color: var(--partial); }
+.pill.plain { background: var(--band); color: var(--ink-2); }
+.gk { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.glyph { width: 40px; height: 26px; flex: none; color: var(--ink-2); }
+.swatch { display: inline-flex; align-items: center; gap: 6px; font: 13px var(--mono); }
+.swatch i { width: 14px; height: 14px; border: 1px solid var(--rule-strong); display: inline-block; }
 .types { padding: 18px 20px; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 15px; }
 .types dt { font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .types dd { margin: 0; color: var(--ink-2); }
@@ -368,6 +426,9 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
   .issues .count { break-after: avoid; }
   .print-shots figure + figure { margin-top: 8mm; }
   .print-shots img { max-height: 200mm; width: auto; max-width: 100%; }
+  .vtip, .picked { display: none !important; }
+  .ldet > summary::after { content: none; }
+  .ldet tr { break-inside: avoid; }
   footer { display: none; }
 }
 </style>
@@ -507,9 +568,11 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       <div role="tabpanel" id="visuals" aria-labelledby="tab-visuals" tabindex="0" hidden>
         <div class="panel-h"><h2>Visuals used</h2><p>Core visuals ship with Power BI. Custom visuals come from AppSource or a file and run in a sandbox, which is how we tell them apart.</p></div>
         <div class="stats" id="stats"></div>
-        <div class="legend"><span><i class="u core"></i>Core data visual</span><span><i class="u custom"></i>Custom visual</span><span><i class="u layout"></i>Text box, image, shape, button or navigator</span></div>
+        <div class="legend" id="vlegend"></div>
         <div class="card pages" id="unit-pages"></div>
+        <p class="picked" id="picked" aria-live="polite" hidden>Point at a square, tab to it or tap it to see which visual it is.</p>
         <dl class="card types" id="unit-types"></dl>
+        <div class="ldetail" id="ldetail" hidden></div>
       </div>
 
       <div role="tabpanel" id="tab-order" aria-labelledby="tab-taborder" tabindex="0" hidden>
@@ -536,7 +599,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-keyboard"/></svg></span><div><h3>Keyboard access</h3><span class="sc">WCAG 2.1.1</span></div></div><p>Every data or interactive visual can be reached with the Tab key.</p></li>
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-order"/></svg></span><div><h3>Tab order</h3><span class="sc">WCAG 2.4.3</span></div></div><p>Tab moves left to right, top to bottom, the way people read the page. We draw it on a screenshot of each page.</p></li>
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-bookmark"/></svg></span><div><h3>Buttons and tooltips</h3><span class="sc">All five checks</span></div></div><p>We click every bookmark button and check each view it opens, and hover the charts to check report-page tooltips.</p></li>
-          <li class="card extra"><div class="h"><span class="tile"><svg class="i"><use href="#i-layers"/></svg></span><div><h3>Visuals used</h3><span class="sc">Inventory, not scored</span></div></div><p>How many core and custom visuals each page uses, and which ones.</p></li>
+          <li class="card extra"><div class="h"><span class="tile"><svg class="i"><use href="#i-layers"/></svg></span><div><h3>Visuals used</h3><span class="sc">Inventory, not scored</span></div></div><p>How many core and custom visuals each page uses, which ones, and what each text box, shape, image and button is.</p></li>
         </ul>
       </div>
 
@@ -857,6 +920,127 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     }).join("");
   }
 
+  // ---- "Visuals used", one square per visual (results with visuals.items) ----
+  const CATS = [["core", "Core", "Core visual"], ["custom", "Custom", "Custom visual"], ["text", "Text box", "Text box"],
+    ["shape", "Shape", "Shape"], ["image", "Image", "Image"], ["button", "Button", "Button"]];
+  const CAT_NAME = Object.fromEntries(CATS.map(([k, , n]) => [k, n]));
+  const cut = (t, n) => t.length > n ? t.slice(0, n - 1) + "…" : t;
+  let shownItems = [];
+
+  function itemName(it) {
+    if (it.cat === "core" || it.cat === "custom") return it.kind + " · " + (it.cat === "core" ? "core visual" : "custom visual");
+    return CAT_NAME[it.cat] + " · " + String(it.kind || "").toLowerCase();
+  }
+  function itemDetail(it) {
+    const alt = it.alt ? "alt text: " + cut(it.alt, 80) : "no alt text";
+    if (it.cat === "text") return it.text ? "“" + cut(it.text, 70) + "”" : "empty";
+    if (it.cat === "button") return (it.text ? "shows “" + cut(it.text, 40) + "”" : "icon only") + " · " + (it.alt ? "label: " + cut(it.alt, 60) : "no label");
+    if (it.cat === "shape") return (it.text ? "text “" + cut(it.text, 40) + "” · " : "") + (it.hidden ? "hidden from screen readers" : alt);
+    if (it.cat === "image") return (it.hidden ? "hidden from screen readers" : alt)
+      + (it.words && it.words.length ? " · words inside: " + cut(it.words.join(", "), 60) : "");
+    return alt;
+  }
+  const byPos = (a, b) => (a.pos[1] - b.pos[1]) || (a.pos[0] - b.pos[0]);
+  function tally(list) {
+    const c = {};
+    list.forEach(it => { c[it.kind] = (c[it.kind] || 0) + 1; });
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([n, k]) => esc(n) + (k > 1 ? " ×" + k : "")).join(", ");
+  }
+
+  function itemRows(items, names) {
+    shownItems = items;
+    const pages = [...new Set(items.map(it => it.p))].sort((a, b) => a - b);
+    const sq = it => '<button type="button" class="sq u ' + it.cat + '" data-i="' + items.indexOf(it) + '" aria-label="'
+      + esc(itemName(it) + ". " + itemDetail(it)) + '"></button>';
+    const line = (list, keys) => keys.map(k => list.filter(it => it.cat === k).sort(byPos).map(sq).join(""))
+      .filter(Boolean).join('<i class="gap" aria-hidden="true"></i>');
+    return pages.map(p => {
+      const list = items.filter(it => it.p === p);
+      const core = list.filter(it => it.cat === "core").length, data = core + list.filter(it => it.cat === "custom").length;
+      const layout = list.length - data;
+      return '<div class="prow"><div class="pname">Page ' + p + (names[p] ? "<span>" + esc(names[p]) + "</span>" : "") + '</div><div class="units">'
+        + (data ? '<div class="uline"><span class="ucap">Data visuals · ' + data + " · " + Math.round(100 * core / data) + '% core</span><div class="squares">'
+          + line(list, ["core", "custom"]) + "</div></div>" : "")
+        + (layout ? '<div class="uline"><span class="ucap">Layout elements · ' + layout + '</span><div class="squares">'
+          + line(list, ["text", "shape", "image", "button"]) + "</div></div>" : "")
+        + "</div></div>";
+    }).join("");
+  }
+
+  function itemLegend(items) {
+    const count = k => items.filter(it => it.cat === k).length;
+    const lg = list => list.map(([k, n]) => '<span><i class="u ' + k + '" aria-hidden="true"></i>' + n + " <em>" + count(k) + "</em></span>").join("");
+    return '<div class="lg"><b>Data visuals</b>' + lg(CATS.slice(0, 2)) + '</div><div class="lg"><b>Layout elements</b>' + lg(CATS.slice(2)) + "</div>";
+  }
+
+  function itemDetails(items) {
+    const of = k => items.filter(it => it.cat === k).sort((a, b) => (a.p - b.p) || byPos(a, b));
+    const mark = (text, words) => {
+      let out = esc(text);
+      (words || []).forEach(w => { out = out.replace(new RegExp("\\b(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")\\b", "i"), "<mark>$1</mark>"); });
+      return out;
+    };
+    const glyph = kind => {
+      const st = 'stroke="currentColor" stroke-width="2.5" fill="none"';
+      const shapes = { "Rectangle": '<rect x="4" y="4" width="32" height="18" ' + st + "/>",
+        "Rounded rectangle": '<rect x="4" y="4" width="32" height="18" rx="6" ' + st + "/>",
+        "Horizontal line": '<line x1="4" y1="13" x2="36" y2="13" ' + st + "/>",
+        "Vertical line": '<line x1="20" y1="2" x2="20" y2="24" ' + st + "/>",
+        "Small shape (icon size)": '<path d="M15 6 L26 13 L15 20" ' + st + ' stroke-linejoin="round"/>' };
+      return '<svg class="glyph" viewBox="0 0 40 26" aria-hidden="true">' + (shapes[kind] || '<path d="M5 22 L20 4 L35 22 Z" ' + st + "/>") + "</svg>";
+    };
+    const reader = it => it.hidden ? '<span class="pill plain">Skipped (decorative)</span>'
+      : it.alt ? '<span class="pill ok">Alt text</span> ' + esc(cut(it.alt, 90)) : '<span class="pill bad">No alt text</span>';
+    const none = '<span class="muted">none</span>';
+    const block = (k, title, head, rows) => {
+      const list = of(k);
+      if (!list.length) return "";
+      return '<details class="card ldet"><summary><i class="u ' + k + '" aria-hidden="true"></i>' + title + " <em>" + list.length + "</em></summary>"
+        + '<div class="scroll"><table><thead><tr><th>Page</th>' + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>"
+        + list.map(it => '<tr><td class="num">' + it.p + "</td>" + rows(it).map(c => "<td>" + c + "</td>").join("") + "</tr>").join("")
+        + "</tbody></table></div></details>";
+    };
+    return "<h3>Layout elements in detail</h3>"
+      + block("text", "Text boxes", ["Role", "Text, keywords marked"], it => ['<span class="pill mid">' + esc(it.kind) + "</span>",
+        it.text ? mark(it.text, it.words) : none])
+      + block("shape", "Shapes", ["Shape", "Size (px)", "Fill", "Text on it", "Screen reader"], it => [
+        '<span class="gk">' + glyph(it.kind) + esc(it.kind) + "</span>", (it.size || []).join(" × "),
+        it.fill ? '<span class="swatch"><i style="background:' + esc(it.fill) + '"></i>' + esc(it.fill) + "</span>" : none,
+        it.text ? esc(it.text) : none, reader(it)])
+      + block("image", "Images", ["Kind", "Size (px)", "Screen reader", "Words inside"], it => [esc(it.kind), (it.size || []).join(" × "), reader(it),
+        it.words && it.words.length ? esc(it.words.join(" · ")) + (!it.alt && !it.hidden ? ' <span class="pill bad">Text only in the image</span>' : "")
+          : (it.kind === "Picture" ? '<span class="muted">not read (picture)</span>' : none)])
+      + block("button", "Buttons and navigators", ["Action", "Label", "Shows"], it => ['<span class="pill mid">' + esc(it.kind) + "</span>",
+        it.alt ? esc(cut(it.alt, 110)) : '<span class="pill bad">No label</span>', it.text ? esc(it.text) : '<span class="pill plain">Icon only</span>']);
+  }
+
+  const vtip = document.createElement("div");
+  vtip.className = "vtip"; vtip.hidden = true; vtip.setAttribute("aria-hidden", "true");
+  document.body.appendChild(vtip);
+  function tipShow(el) {
+    const it = shownItems[+el.dataset.i]; if (!it) return;
+    vtip.innerHTML = "<b>" + esc(itemName(it)) + "</b>" + esc(itemDetail(it)); vtip.hidden = false;
+    const r = el.getBoundingClientRect(), w = Math.min(300, innerWidth - 24);
+    vtip.style.left = Math.max(12, Math.min(r.left, innerWidth - w - 12)) + "px";
+    const h = vtip.offsetHeight;
+    vtip.style.top = (r.bottom + 8 + h > innerHeight - 8 ? r.top - h - 8 : r.bottom + 8) + "px";
+  }
+  function tipPick(el) {
+    const it = shownItems[+el.dataset.i]; if (!it) return;
+    $("unit-pages").querySelectorAll('.sq[aria-pressed="true"]').forEach(b => b.removeAttribute("aria-pressed"));
+    el.setAttribute("aria-pressed", "true");
+    $("picked").innerHTML = "<b>Page " + it.p + " · " + esc(itemName(it)) + "</b> · " + esc(itemDetail(it));
+  }
+  const tipHide = () => { vtip.hidden = true; };
+  $("unit-pages").addEventListener("mouseover", e => { const b = e.target.closest(".sq"); if (b) tipShow(b); });
+  $("unit-pages").addEventListener("mouseout", e => { if (e.target.closest(".sq")) tipHide(); });
+  $("unit-pages").addEventListener("focusin", e => { const b = e.target.closest(".sq"); if (b) { tipShow(b); tipPick(b); } });
+  $("unit-pages").addEventListener("focusout", tipHide);
+  $("unit-pages").addEventListener("click", e => { const b = e.target.closest(".sq"); if (b) tipPick(b); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") tipHide(); });
+  addEventListener("scroll", tipHide, { passive: true });
+  addEventListener("beforeprint", () => document.querySelectorAll(".ldet").forEach(d => { d.open = true; }));
+
   function showShot(r, i) {
     const img = r.images[i];
     Array.from($("pagepick").children).forEach((b, j) => b.setAttribute("aria-pressed", String(j === i)));
@@ -893,9 +1077,26 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       + '<div class="card stat"><span class="big">' + v.core_data + '</span><span class="lab"><i class="u core"></i>Core visuals</span><p>Charts, tables, cards and slicers.</p></div>'
       + '<div class="card stat"><span class="big">' + v.custom + '</span><span class="lab"><i class="u custom"></i>Custom visuals</span><p>From AppSource or a file.</p></div>'
       + '<div class="card stat"><span class="big">' + v.core_layout + '</span><span class="lab"><i class="u layout"></i>Layout elements</span><p>Text boxes, images, shapes, buttons. Not in the share.</p></div>';
-    $("unit-pages").innerHTML = unitRows(r, names);
-    $("unit-types").innerHTML = '<dt><i class="u core"></i>Core</dt><dd>' + esc(v.core_data_types || "none") + "</dd>"
-      + '<dt><i class="u custom"></i>Custom</dt><dd>' + esc(v.custom_types || "none") + "</dd>";
+    const items = v.items || [];
+    $("picked").hidden = !items.length;
+    $("ldetail").hidden = !items.some(it => !["core", "custom"].includes(it.cat));
+    if (items.length) {
+      $("vlegend").className = "legend grouped";
+      $("vlegend").innerHTML = itemLegend(items);
+      $("unit-pages").innerHTML = itemRows(items, names);
+      $("unit-types").innerHTML = CATS.map(([k, , n]) => {
+        const list = items.filter(it => it.cat === k);
+        return list.length ? '<dt><i class="u ' + k + '"></i>' + n + "</dt><dd>" + tally(list) + "</dd>" : "";
+      }).join("");
+      $("ldetail").innerHTML = itemDetails(items);
+    } else {
+      // results from before the per-visual inventory
+      $("vlegend").className = "legend";
+      $("vlegend").innerHTML = '<span><i class="u core"></i>Core data visual</span><span><i class="u custom"></i>Custom visual</span><span><i class="u layout"></i>Text box, image, shape, button or navigator</span>';
+      $("unit-pages").innerHTML = unitRows(r, names);
+      $("unit-types").innerHTML = '<dt><i class="u core"></i>Core</dt><dd>' + esc(v.core_data_types || "none") + "</dd>"
+        + '<dt><i class="u custom"></i>Custom</dt><dd>' + esc(v.custom_types || "none") + "</dd>";
+    }
 
     $("pagepick").innerHTML = r.images.map((img, i) => '<button type="button" aria-pressed="false"' + (img.state ? ' class="view"' : "") + ">"
       + (img.state ? "View " + img.state + ": " + esc(img.name.replace(/^.*? · after /, "")) : "Page " + img.page + (img.name ? " · " + esc(img.name) : "")) + "</button>").join("");

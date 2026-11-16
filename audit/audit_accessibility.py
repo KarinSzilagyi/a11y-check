@@ -20,12 +20,17 @@ Visual inventory (not scored), per visible visual:
 A built-in visual is recognised by how it renders, not by a list of names, so changes to the
 core list (e.g. the built-in Gantt preview replacing the AppSource Gantt) need no update.
 visuals_core_share = core data / (core data + custom).
+visuals_items is the same inventory one visual at a time (JSON, see describe()): its category
+(core, custom, text, shape, image, button), a sub-kind (shape outline, image format, text role,
+button action), its visible text or the words inside an SVG image, and its alt text.
 Automated results are evidence; they do not replace a manual check.
 """
 
+import base64
 import collections
 import datetime
 import io
+import json
 import re
 import time
 import unicodedata
@@ -47,7 +52,7 @@ TESTS = ["alt_text", "text_contrast", "visual_contrast", "keyboard_access", "tab
 FIELDS = (["report_id", "audit_status", "audited_at", "pages_audited", "states_audited"]
           + [f"{test}_{part}" for test in TESTS for part in ("score", "checked", "issues")]
           + ["visuals_core_data", "visuals_core_layout", "visuals_custom", "visuals_core_share",
-             "visuals_core_data_types", "visuals_custom_types", "visuals_by_page"]
+             "visuals_core_data_types", "visuals_custom_types", "visuals_by_page", "visuals_items"]
           + ["tab_order_images", "tab_order_titles", "audit_notes"])
 VIEWPORT = {"width": 1600, "height": 1100}
 DECORATIVE_TYPES = {"img", "image", "shape", "text box", "textbox"}
@@ -97,6 +102,28 @@ VISUALS_JS = """scope => {
             rect: [r.x, r.y, r.width, r.height], canvas: v.querySelectorAll('canvas, iframe').length,
             sandbox: !!v.querySelector('iframe[name="visual-sandbox"], iframe[src*="cvSandbox"]'), hit, covered,
             shown: cs.visibility === 'visible' && r.width >= 2 && r.height >= 2 && parseFloat(cs.opacity) > 0.05};
+    });
+}"""
+
+# Details of the layout elements, for the visual inventory: which built-in element it is (from the
+# classes Power BI renders), the outline and fill of a shape, the format of an image and its SVG source.
+DETAIL_JS = """indices => {
+    const all = document.querySelectorAll('.visualContainer');
+    return indices.map(i => {
+        const v = all[i];
+        if (!v) return null;
+        const has = sel => !!v.querySelector(sel);
+        const kind = has('.visual-shape, .shapeVisual') ? 'shape' : has('.visual-image, .imageContainer') ? 'image'
+            : has('.visual-textbox') ? 'text' : has('.visual-actionButton, .bookmarkNavigator, .pageNavigator') ? 'button' : '';
+        const path = v.querySelector('svg path');
+        const shapeEl = v.querySelector('svg path, svg rect, svg ellipse');
+        const img = v.querySelector('img, image');
+        const src = img ? (img.getAttribute('src') || img.getAttribute('href') || '') : '';
+        return {kind, d: path ? (path.getAttribute('d') || '').slice(0, 200) : '',
+            fill: shapeEl ? getComputedStyle(shapeEl).fill : '', stroke: shapeEl ? getComputedStyle(shapeEl).stroke : '',
+            img: src.startsWith('data:image/svg') ? 'svg' : src ? 'picture' : '',
+            svg: src.startsWith('data:image/svg') ? src.slice(0, 200000) : '',
+            text: (v.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 400)};
     });
 }"""
 
@@ -449,6 +476,127 @@ def inventory(shown):
     return counts
 
 
+# ---------- visual inventory, one visual at a time ----------
+
+STOP_WORDS = set("""a an the and or of to in on for with by at from as is are was were be been this that these those it its
+our we you your their they them he she his her not no but if so than then there here what which who whom how why when
+up down out over under into onto about after before again more most less very can will just also each every one two
+same both only own such too do does did has have had""".split())
+BUTTON_TYPES = {"button", "actionbutton", "bookmarknavigator", "pagenavigator", "navigator"}
+
+
+def keywords(text, limit=4):
+    """The first few content words of a text box."""
+    found, seen = [], set()
+    for word in re.findall(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'-]{2,}", text):
+        key = word.lower().strip("'-")
+        if len(key) < 4 or key in STOP_WORDS or key in seen:
+            continue
+        seen.add(key)
+        found.append(key)
+        if len(found) == limit:
+            break
+    return found
+
+
+def text_role(text):
+    """A guess at what a text box is for, from its wording."""
+    t = text.strip()
+    if not t:
+        return "Empty"
+    if re.match(r"^(source|data|by)\b", t, re.I):
+        return "Footnote"
+    if re.match(r"^\d{2}\s", t) or (t.isupper() and len(t.split()) <= 8):
+        return "Section heading"
+    if len(t.split()) <= 9 and not t.endswith("."):
+        return "Heading"
+    return "Body text"
+
+
+def shape_kind(d, width, height):
+    """The outline of a shape, from its SVG path."""
+    d = d.strip()
+    points = re.findall(r"[ML]\s*(-?[\d.e-]+)[\s,]+(-?[\d.e-]+)", d)
+    if re.search(r"[Aa]", d) and len(points) <= 5:
+        return "Rounded rectangle"
+    if d.upper().endswith("Z") and len(points) == 4 and not re.search(r"[AaCcQq]", d):
+        return "Rectangle"
+    if len(points) == 2 and not d.upper().endswith("Z"):
+        (x1, y1), (x2, y2) = [(float(a), float(b)) for a, b in points]
+        if abs(y1 - y2) < 0.5:
+            return "Horizontal line"
+        if abs(x1 - x2) < 0.5:
+            return "Vertical line"
+    if max(width, height) <= 40:
+        return "Small shape (icon size)"
+    return "Custom shape"
+
+
+def hex_colour(css):
+    parts = re.findall(r"[\d.]+", css or "")
+    if len(parts) < 3 or (len(parts) > 3 and float(parts[3]) < 0.1):
+        return ""
+    return "#" + "".join(f"{round(float(n)):02X}" for n in parts[:3])
+
+
+def svg_words(src, limit=12):
+    """Words written inside an SVG image (its <text> elements), or [] if there are none."""
+    try:
+        head, body = src.split(",", 1)
+        from urllib.parse import unquote
+        svg = base64.b64decode(body).decode("utf-8", "ignore") if ";base64" in head else unquote(body)
+    except Exception:
+        return []
+    words = []
+    for match in re.finditer(r"<text\b[^>]*>(.*?)</text>", svg, re.S | re.I):
+        text = re.sub(r"<[^>]+>", " ", match.group(1))
+        text = re.sub(r"\s+", " ", text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")).strip()
+        if text and text not in words:
+            words.append(text[:40])
+        if len(words) == limit:
+            break
+    return words
+
+
+def describe(visual, detail, page_number):
+    """One visual of the inventory: category, sub-kind, visible text and alt text, for the results page."""
+    detail = detail or {}
+    kind = re.sub(r"\s+", "", (visual["type"] or "").lower())
+    label = re.sub(r"\s+", " ", visual["label"]).strip()
+    alt = "" if label.lower() in DEFAULT_LABELS or label.lower() == (visual["type"] or "").lower() else label[:160]
+    text = detail.get("text", "")
+    x, y, width, height = (round(n) for n in visual["rect"])
+    item = {"p": page_number, "type": visual["type"] or "Visual", "alt": alt, "hidden": visual["tab"] == "-1",
+            "pos": [x, y]}
+    if visual["sandbox"]:
+        item.update(cat="custom", kind=visual["type"] or "Custom visual")
+    elif kind not in LAYOUT_TYPES:
+        item.update(cat="core", kind=visual["type"] or "Visual")
+    elif kind in TEXT_TYPES or detail.get("kind") == "text":
+        item.update(cat="text", kind=text_role(text), text=text[:160], words=keywords(text))
+    elif kind in BUTTON_TYPES or detail.get("kind") == "button":
+        action = ACTION.match(label)
+        item.update(cat="button", kind=(action.group(1).capitalize() if action else "Button"),
+                    text=text[:80], alt=ACTION.sub("", label).strip(" .")[:160] or alt)
+    elif detail.get("kind") == "shape" or (kind == "shape" and detail.get("kind") != "image"):
+        outline = shape_kind(detail.get("d", ""), width, height)
+        colour = detail.get("stroke") if outline.endswith(" line") else detail.get("fill")
+        item.update(cat="shape", kind=outline, size=[width, height], fill=hex_colour(colour), text=text[:80])
+    else:
+        svg = detail.get("img") == "svg"
+        item.update(cat="image", kind="SVG graphic" if svg else "Picture", size=[width, height],
+                    words=svg_words(detail.get("svg", "")) if svg else [])
+    return item
+
+
+def visual_details(frame, visuals):
+    """DETAIL_JS for these visuals of the page, in the same order; empty dicts if it fails."""
+    try:
+        return frame.evaluate(DETAIL_JS, [v["i"] for v in visuals]) or [{} for _ in visuals]
+    except Exception:
+        return [{} for _ in visuals]
+
+
 def listing(counter):
     return ", ".join(f"{kind} x{n}" if n > 1 else kind for kind, n in counter.most_common())
 
@@ -659,7 +807,7 @@ def audit_page(page, frame, prefix, seen=None, tips=None):
     if tips is not None:
         check_tooltips(page, frame, prefix, fresh, texts, marks, tips, checks, notes)
     seen.update(v["key"] for v in shown)
-    return checks, notes, image, inventory(fresh)
+    return checks, notes, image, inventory(fresh), list(zip(fresh, visual_details(frame, fresh)))
 
 
 # ---------- tooltips ----------
@@ -913,7 +1061,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
     notes, images, failed = [], [], []
     tab_stops = 0
     report_counts = collections.defaultdict(collections.Counter)
-    by_page = []
+    by_page, items = [], []
     deadline = time.time() + explore_seconds if explore_seconds else None
     known = set()  # visual sets of the pages checked so far
     context = browser.new_context(viewport=VIEWPORT, locale="en-US")
@@ -944,7 +1092,8 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
 
             def add(audited, label=None, state=0):
                 nonlocal tab_stops
-                checks, state_notes, image, counts = audited
+                checks, state_notes, image, counts, described = audited
+                items.extend(describe(v, d, number) for v, d in described)
                 for group, counter in counts.items():
                     page_counts[group].update(counter)
                 for test in TESTS:
@@ -1012,7 +1161,8 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
     result.update(visuals_core_data=str(data), visuals_core_layout=str(layout), visuals_custom=str(custom),
                   visuals_core_share=str(round(100 * data / (data + custom))) if data + custom else "",
                   visuals_core_data_types=listing(report_counts["data"]),
-                  visuals_custom_types=listing(report_counts["custom"]), visuals_by_page="; ".join(by_page))
+                  visuals_custom_types=listing(report_counts["custom"]), visuals_by_page="; ".join(by_page),
+                  visuals_items=json.dumps(items, ensure_ascii=False, separators=(",", ":")))
     for test, (passed, checked, issues) in totals.items():
         result[f"{test}_checked"] = str(checked)
         result[f"{test}_score"] = str(round(100 * passed / checked)) if checked else ""

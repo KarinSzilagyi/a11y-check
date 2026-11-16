@@ -515,6 +515,14 @@ def split(value):
     return [part for part in (value or "").split("; ") if part]
 
 
+def items_of(value):
+    try:
+        items = json.loads(value or "[]")
+    except ValueError:
+        return []
+    return items if isinstance(items, list) else []
+
+
 def shape_result(job, r):
     tests = []
     for key in audit.TESTS:
@@ -542,6 +550,7 @@ def shape_result(job, r):
             "core_data_types": r.get("visuals_core_data_types", ""),
             "custom_types": r.get("visuals_custom_types", ""),
             "by_page": split(r.get("visuals_by_page")),
+            "items": items_of(r.get("visuals_items")),
         },
         "images": images,
         "notes": split(r.get("audit_notes")),
