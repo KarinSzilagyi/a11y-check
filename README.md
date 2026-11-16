@@ -80,6 +80,7 @@ docker build -t a11y-check . && docker run -p 8000:8000 a11y-check
 | Variable | Default | Meaning |
 |---|---|---|
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | comma-separated sites allowed to call the API, e.g. `https://example.com,https://www.example.com` for a page hosted on example.com |
+| `PAGE_REDIRECT` | (empty: the service serves its own pages) | address of a copy of the pages hosted elsewhere, e.g. `https://example.com/a11y-check/`; `/`, `/index.html` and `/palette.html` then redirect there, keeping `?check=…` so result links still work |
 | `BROWSER_CHANNEL` | (empty: Playwright Chromium) | `chrome` for an installed Google Chrome |
 | `MAX_PAGES` | 12 | pages audited per report |
 | `MAX_STATES` | 8 | button views checked per page (0 = don't click buttons) |

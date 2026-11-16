@@ -25,6 +25,9 @@ Local run (from this folder):
     .venv\\Scripts\\python.exe -m uvicorn app:app --port 8000      (set BROWSER_CHANNEL=chrome on Windows)
 Settings (environment variables):
     ALLOWED_ORIGINS   comma-separated origins allowed to call the API (default: localhost:8000), e.g. "https://example.com,https://www.example.com"
+    PAGE_REDIRECT     address of a copy of the pages hosted elsewhere, e.g. "https://example.com/a11y-check/":
+                      / , /index.html and /palette.html then redirect there (with the query, so result links
+                      keep working). Empty (default): this service serves the pages in static/ itself.
     BROWSER_CHANNEL   "chrome" to use installed Google Chrome; empty for Playwright's Chromium (container)
     MAX_PAGES         pages audited per report (default 12)
     MAX_STATES        bookmark-button views checked per page (default 8; 0 turns button clicking off)
@@ -66,7 +69,7 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -82,6 +85,9 @@ def env_list(name, default):
 
 ALLOWED_ORIGINS = env_list("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
 BROWSER_CHANNEL = os.environ.get("BROWSER_CHANNEL", "").strip() or None
+PAGE_REDIRECT = os.environ.get("PAGE_REDIRECT", "").strip()
+if PAGE_REDIRECT and not PAGE_REDIRECT.endswith("/"):
+    PAGE_REDIRECT += "/"
 MAX_PAGES = int(os.environ.get("MAX_PAGES", "12"))
 MAX_STATES = int(os.environ.get("MAX_STATES", "8"))
 EXPLORE_SECONDS = int(os.environ.get("EXPLORE_SECONDS", "300"))
@@ -730,6 +736,17 @@ def health():
             traceback.print_exc()
             return {"ok": True, "queued": 0}
     return {"ok": True, "queued": waiting.qsize()}
+
+
+if PAGE_REDIRECT:
+    # The pages live elsewhere (PAGE_REDIRECT): send visitors there, keeping ?check=… so result links work.
+    @app.get("/")
+    @app.get("/index.html")
+    @app.get("/palette.html")
+    def page_moved(request: Request):
+        name = "palette.html" if request.url.path.endswith("palette.html") else ""
+        query = ("?" + request.url.query) if request.url.query else ""
+        return RedirectResponse(PAGE_REDIRECT + name + query, status_code=302)
 
 
 app.mount("/", StaticFiles(directory=HERE / "static", html=True), name="static")
