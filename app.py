@@ -529,6 +529,20 @@ def items_of(value):
     return items if isinstance(items, list) else []
 
 
+def area_of(job, value):
+    """The report-area overview, with screenshot names turned into image URLs."""
+    try:
+        area = json.loads(value or "null")
+    except ValueError:
+        return None
+    if not isinstance(area, dict):
+        return None
+    for entry in area.get("pages", []) + area.get("overlays", []):
+        if entry.get("image"):
+            entry["image"] = f"/api/audits/{job.id}/images/{entry['image']}"
+    return area
+
+
 def shape_result(job, r):
     tests = []
     for key in audit.TESTS:
@@ -558,6 +572,7 @@ def shape_result(job, r):
             "by_page": split(r.get("visuals_by_page")),
             "items": items_of(r.get("visuals_items")),
         },
+        "area": area_of(job, r.get("report_area")),
         "images": images,
         "notes": split(r.get("audit_notes")),
         "audited_at": r.get("audited_at", ""),

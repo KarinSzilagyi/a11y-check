@@ -344,6 +344,34 @@ form.check label { font: 600 17px var(--head); }
 .types dt { font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .types dd { margin: 0; color: var(--ink-2); }
 
+.area .small { font-size: 14px; }
+/* report area: pages, hidden pages and bookmark overlays */
+.area { padding: 18px 20px 8px; display: grid; gap: 12px; }
+.area-h { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.area-h h3 { font-size: 20px; font-weight: 600; }
+.area-sum { font-size: 16px; }
+.area-sum b { font: 600 22px var(--head); margin-right: 6px; }
+.info-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--rule-strong); color: var(--ink);
+  font: 600 13px var(--font); padding: 5px 10px; cursor: pointer; }
+.info-btn:hover { border-color: var(--ink); }
+.info-btn[aria-expanded="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.info-btn .ic { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-grid; place-items: center;
+  font: 700 11px var(--mono); line-height: 1; }
+.area-info { background: var(--band); padding: 12px 16px; font-size: 15px; display: grid; gap: 6px; }
+.area-info ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.area table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.area th { text-align: left; font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+  padding: 0 12px 8px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.area td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.area tr.more td { padding-top: 0; }
+.area tr:last-child td { border-bottom: 0; }
+.abar { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font: 13px var(--mono); }
+.abar span { width: 90px; height: 10px; background: var(--band); border: 1px solid var(--rule-strong); display: inline-block; }
+.abar i { display: block; height: 100%; background: var(--brand); }
+.area .shot-box { display: grid; gap: 8px; padding: 4px 0 8px; font-size: 14px; color: var(--ink-2); }
+.area .shot-box img { max-width: min(100%, 720px); height: auto; border: 1px solid var(--rule-strong); background: #FFFFFF; }
+.area .scroll { overflow-x: auto; }
+
 /* tab order screenshots */
 .pagepick { display: flex; flex-wrap: wrap; gap: 8px; }
 .pagepick button { background: var(--surface); border: 1px solid var(--rule-strong); color: var(--ink); font: 500 15px var(--font); padding: 8px 14px; cursor: pointer; }
@@ -567,6 +595,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
 
       <div role="tabpanel" id="visuals" aria-labelledby="tab-visuals" tabindex="0" hidden>
         <div class="panel-h"><h2>Visuals used</h2><p>Core visuals ship with Power BI. Custom visuals come from AppSource or a file and run in a sandbox, which is how we tell them apart.</p></div>
+        <div class="card area" id="area" hidden></div>
         <div class="stats" id="stats"></div>
         <div class="legend" id="vlegend"></div>
         <div class="card pages" id="unit-pages"></div>
@@ -1014,6 +1043,68 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
         it.alt ? esc(cut(it.alt, 110)) : '<span class="pill bad">No label</span>', it.text ? esc(it.text) : '<span class="pill plain">Icon only</span>']);
   }
 
+  // ---- report area: how much report a viewer can reach (pages, hidden pages, bookmark overlays) ----
+  const AREA_INFO = {
+    visible: "A page in the report's page list. Counts as 1 page.",
+    hidden: "Set to hidden in Power BI, so it isn't in the page list, but a button opens it. Viewers can reach it, so it counts as 1 page.",
+    unreached: "Set to hidden, and none of the buttons the check tried opens it. Not counted. It may still be reachable through a button the check didn't get to, or by drillthrough.",
+    drillthrough: "A drillthrough page: viewers open it by right-clicking a data point and choosing Drill through. Counted only if a button opened it as well.",
+    tooltip: "A tooltip page: it only appears, small, while viewers hover over a chart. Not counted as report area.",
+    overlay: "A bookmark that shows extra visuals on top of the page. The number is the share of the page those visuals cover: 0.6× page = 60% of the page."
+  };
+  function areaHtml(area, r) {
+    const pageShot = name => { const img = r.images.find(i => !i.state && i.name === name); return img ? img.url : ""; };
+    const bar = v => '<span class="abar"><span aria-hidden="true"><i style="width:' + Math.min(100, Math.round(v * 100)) + '%"></i></span>' + v.toFixed(1) + "× page</span>";
+    const rows = [];
+    area.pages.forEach(p => {
+      if (p.kind === "tooltip") { rows.push({ pill: '<span class="pill plain">Tooltip page</span>', name: p.name, size: '<span class="muted">not counted</span>',
+        how: "hovering a chart", info: "tooltip", shot: "" }); return; }
+      if (p.kind === "visible") rows.push({ pill: '<span class="pill plain">Visible page</span>', name: p.name, size: bar(1), how: "page list", info: "visible", shot: pageShot(p.name) });
+      else if (p.reached) rows.push({ pill: '<span class="pill mid">' + (p.kind === "drillthrough" ? "Drillthrough page, button reached" : "Hidden, reachable") + "</span>", name: p.name, size: bar(1),
+        how: "button “" + esc(p.via) + "”" + (p.from ? " on " + (typeof p.from === "number" ? "page " + p.from : "“" + esc(p.from) + "”") : ""), info: p.kind === "drillthrough" ? "drillthrough" : "hidden", shot: p.image });
+      else rows.push({ pill: '<span class="pill plain">' + (p.kind === "drillthrough" ? "Drillthrough page" : "Hidden, not reached") + "</span>", name: p.name,
+        size: '<span class="muted">not counted</span>', how: p.kind === "drillthrough" ? "right-click › Drill through" : '<span class="muted">no button found</span>', info: p.kind === "drillthrough" ? "drillthrough" : "unreached", shot: "" });
+    });
+    area.overlays.forEach(o => rows.push({ pill: '<span class="pill ok">Bookmark overlay</span>', name: o.label || "bookmark", size: bar(o.area),
+      how: "on " + esc(o.page), info: "overlay", shot: o.image }));
+    const rank = { visible: 0, hidden: 1, overlay: 2, unreached: 3, drillthrough: 4, tooltip: 5 };
+    rows.sort((a, b) => rank[a.info] - rank[b.info]);
+    const tooltips = area.pages.filter(p => p.kind === "tooltip").length;
+    const drills = area.pages.filter(p => p.kind === "drillthrough").length;
+    const notReached = area.pages.filter(p => p.kind === "hidden" && !p.reached).length;
+    const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+    const extra = [tooltips ? plural(tooltips, "tooltip page", "tooltip pages") : "", drills ? plural(drills, "drillthrough page", "drillthrough pages") : "",
+      notReached ? plural(notReached, "hidden page not reached", "hidden pages not reached") : ""].filter(Boolean);
+    const hiddenReached = area.pages.filter(p => p.kind !== "visible" && p.kind !== "tooltip" && p.reached).length;
+    const overlaySum = area.overlays.reduce((s, o) => s + o.area, 0);
+    const parts = [area.visible + (area.visible === 1 ? " visible page" : " visible pages")];
+    if (hiddenReached) parts.push(hiddenReached + (hiddenReached === 1 ? " hidden page reached" : " hidden pages reached"));
+    if (area.overlays.length) parts.push(area.overlays.length + (area.overlays.length === 1 ? " bookmark overlay" : " bookmark overlays") + " (" + overlaySum.toFixed(1) + " pages)");
+    return '<div class="area-h"><h3>Report area</h3><button type="button" class="info-btn" aria-expanded="false" aria-controls="area-info" data-toggle="area-info">'
+      + '<span class="ic" aria-hidden="true">i</span>What this means</button></div>'
+      + '<p class="area-sum"><b>' + area.total.toFixed(1) + " pages</b>" + parts.join(" + ") + "</p>"
+      + (extra.length ? '<p class="small muted">Also in the report, not counted: ' + extra.join(", ") + ".</p>" : "")
+      + '<div class="area-info" id="area-info" hidden><p>How much report a viewer can actually reach, for example to check a page limit:</p><ul>'
+      + "<li><b>Visible pages</b> are in the page list.</li><li><b>Hidden pages</b> aren't in the page list, but a button can open them. They count when the check reached one.</li>"
+      + "<li><b>Bookmark overlays</b> are views a bookmark button shows on top of a page; each counts with the share of the page it covers.</li>"
+      + "<li><b>Tooltip pages</b> only appear, small, while hovering a chart. Not counted" + (tooltips ? " (this report has " + tooltips + ")" : "") + ".</li>"
+      + "<li><b>Drillthrough pages</b> open by right-clicking a data point. Not counted unless a button also opens them" + (drills ? " (this report has " + drills + ")" : "") + ".</li></ul>"
+      + "<p>The check clicks every bookmark and page-navigation button it can reach, within its time and view limits, so a hidden page reachable only through a button it didn't try shows as not reached. Use ⓘ on a row for its screenshot.</p>"
+      + (area.defined ? "" : "<p>This report didn't share its page list, so only hidden pages the check reached are listed.</p>") + "</div>"
+      + '<div class="scroll"><table><thead><tr><th>Kind</th><th>Page or bookmark</th><th>Size</th><th>How viewers get there</th><th><span class="sr">Details</span></th></tr></thead><tbody>'
+      + rows.map((row, i) => "<tr><td>" + row.pill + "</td><td>" + esc(row.name) + "</td><td>" + row.size + "</td><td>" + row.how + "</td>"
+        + '<td><button type="button" class="info-btn" aria-expanded="false" aria-controls="area-row-' + i + '" data-toggle="area-row-' + i + '" aria-label="About ' + esc(row.name) + '"><span class="ic" aria-hidden="true">i</span></button></td></tr>'
+        + '<tr class="more" id="area-row-' + i + '" hidden><td colspan="5"><div class="shot-box"><span>' + esc(AREA_INFO[row.info]) + "</span>"
+        + (row.shot ? '<a href="' + esc(API + row.shot) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + esc(API + row.shot) + '" alt="Screenshot of ' + esc(row.name) + ', with its tab stops numbered"></a>' : "")
+        + "</div></td></tr>").join("")
+      + "</tbody></table></div>";
+  }
+  $("area").addEventListener("click", e => {
+    const b = e.target.closest("[data-toggle]"); if (!b) return;
+    const target = $(b.dataset.toggle), open = b.getAttribute("aria-expanded") !== "true";
+    b.setAttribute("aria-expanded", String(open)); target.hidden = !open;
+  });
+
   const vtip = document.createElement("div");
   vtip.className = "vtip"; vtip.hidden = true; vtip.setAttribute("aria-hidden", "true");
   document.body.appendChild(vtip);
@@ -1039,7 +1130,10 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
   $("unit-pages").addEventListener("click", e => { const b = e.target.closest(".sq"); if (b) tipPick(b); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") tipHide(); });
   addEventListener("scroll", tipHide, { passive: true });
-  addEventListener("beforeprint", () => document.querySelectorAll(".ldet").forEach(d => { d.open = true; }));
+  addEventListener("beforeprint", () => {
+    document.querySelectorAll(".ldet").forEach(d => { d.open = true; });
+    const info = document.getElementById("area-info"); if (info) info.hidden = false;
+  });
 
   function showShot(r, i) {
     const img = r.images[i];
@@ -1077,6 +1171,8 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       + '<div class="card stat"><span class="big">' + v.core_data + '</span><span class="lab"><i class="u core"></i>Core visuals</span><p>Charts, tables, cards and slicers.</p></div>'
       + '<div class="card stat"><span class="big">' + v.custom + '</span><span class="lab"><i class="u custom"></i>Custom visuals</span><p>From AppSource or a file.</p></div>'
       + '<div class="card stat"><span class="big">' + v.core_layout + '</span><span class="lab"><i class="u layout"></i>Layout elements</span><p>Text boxes, images, shapes, buttons. Not in the share.</p></div>';
+    $("area").hidden = !r.area;
+    $("area").innerHTML = r.area ? areaHtml(r.area, r) : "";
     const items = v.items || [];
     $("picked").hidden = !items.length;
     $("ldetail").hidden = !items.some(it => !["core", "custom"].includes(it.cat));

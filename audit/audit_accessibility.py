@@ -20,6 +20,10 @@ Visual inventory (not scored), per visible visual:
 A built-in visual is recognised by how it renders, not by a list of names, so changes to the
 core list (e.g. the built-in Gantt preview replacing the AppSource Gantt) need no update.
 visuals_core_share = core data / (core data + custom).
+report_area (JSON) shows how much report a viewer can reach: every page of the report definition
+(visible, hidden, tooltip or drillthrough), which hidden pages a button opens, and the share of the page
+each bookmark view covers with visuals it adds (0.6 = 60% of the page). report_area_summary is the same in
+one line, e.g. "1 visible page + 3 hidden pages reached + bookmark overlays 0.8 = 4.8 pages".
 visuals_items is the same inventory one visual at a time (JSON, see describe()): its category
 (core, custom, text, shape, image, button), a sub-kind (shape outline, image format, text role,
 button action), its visible text or the words inside an SVG image, and its alt text.
@@ -52,7 +56,8 @@ TESTS = ["alt_text", "text_contrast", "visual_contrast", "keyboard_access", "tab
 FIELDS = (["report_id", "audit_status", "audited_at", "pages_audited", "states_audited"]
           + [f"{test}_{part}" for test in TESTS for part in ("score", "checked", "issues")]
           + ["visuals_core_data", "visuals_core_layout", "visuals_custom", "visuals_core_share",
-             "visuals_core_data_types", "visuals_custom_types", "visuals_by_page", "visuals_items"]
+             "visuals_core_data_types", "visuals_custom_types", "visuals_by_page", "visuals_items",
+             "report_area_summary", "report_area"]
           + ["tab_order_images", "tab_order_titles", "audit_notes"])
 VIEWPORT = {"width": 1600, "height": 1100}
 DECORATIVE_TYPES = {"img", "image", "shape", "text box", "textbox"}
@@ -917,6 +922,8 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
     that opens one of them (a logo going to the cover page) adds nothing. Returns (frame, clicked, notes)."""
     notes = []
     state, buttons = snapshot(page, frame)
+    _, canvas = collect(page, frame)
+    base = layout(state, canvas)
     states = {state: {"path": [], "buttons": buttons}}
     known.add(state[1])
     home = state[0]
@@ -957,13 +964,114 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
             notes.append(f"{prefix}: more than {max_states} button states, checked the first {max_states}")
             break
         extra += 1
+        origin = layout(current, canvas)  # where the clicked button is
         states[state] = {"path": states[current]["path"] + [key], "buttons": buttons}
         current = state
         if on_state:
             on_state(extra)
-        add(audit_page(page, frame, f"{prefix} [view {extra}: {label}]", seen, tips), label, extra)
+        add(audit_page(page, frame, f"{prefix} [view {extra}: {label}]", seen, tips), label, extra,
+            {"hidden": state[0] == "hidden", "rects": layout(state, canvas), "base": base, "origin": origin})
         page.mouse.move(*PARK)
     return frame, clicks > 0, notes
+
+
+# ---------- report area: hidden pages and bookmark overlays ----------
+
+def report_definition(data):
+    """Pages of the report as Power BI sends them to the viewer (also hidden ones): name, kind (visible,
+    hidden, tooltip, drillthrough), size and visual rectangles. [] if the data has no report definition."""
+    exploration = (data or {}).get("exploration") or {}
+    sections = exploration.get("sections") or []
+    flags = {}
+    content = exploration.get("explorationContent") or {}
+    try:  # report definition in the page-by-page (PBIR) format
+        document = json.loads(content.get("explorationDocument") or "{}")
+        for entry in (document.get("pages") or {}).get("pages", []):
+            page = entry.get("content") or {}
+            binding = ((page.get("pageBinding") or {}).get("type") or page.get("type") or "").lower()
+            kind = ("tooltip" if binding == "tooltip" else "drillthrough" if binding == "drillthrough"
+                    else "hidden" if page.get("visibility") == "HiddenInViewMode" else "visible")
+            positions = [(v.get("content") or {}).get("position") or {} for v in entry.get("visualContainers") or []]
+            rects = [[q.get("x", 0), q.get("y", 0), q.get("width", 0), q.get("height", 0)] for q in positions if q]
+            flags[page.get("name")] = (kind, page.get("width"), page.get("height"), rects)
+    except (ValueError, AttributeError):
+        pass
+    pages = []
+    for section in sections:
+        kind, width, height, pbir_rects = flags.get(section.get("objectName") or section.get("name"), (None, None, None, []))
+        if kind is None:  # older format: flags in the section's config
+            config = section.get("config") or "{}"
+            try:
+                parsed = json.loads(config)
+            except ValueError:
+                parsed = {}
+            kind = ("tooltip" if '"Tooltip"' in config or parsed.get("type") == 2
+                    else "drillthrough" if "Drillthrough" in config
+                    else "hidden" if parsed.get("visibility") == 1 else "visible")
+            width, height = section.get("width"), section.get("height")
+        rects = [[v.get("x", 0), v.get("y", 0), v.get("width", 0), v.get("height", 0)]
+                 for v in section.get("visualContainers") or []]
+        if pbir_rects or not any(r[2] for r in rects):  # the PBIR format keeps positions in the page files
+            rects = pbir_rects
+        pages.append({"name": section.get("displayName") or "", "kind": kind, "size": [width or 1280, height or 720],
+                      "rects": rects})
+    return pages
+
+
+def key_rect(key):
+    """The page rectangle stored in a visual key (see visual_key)."""
+    try:
+        return [8 * int(n) for n in key.rsplit("|", 1)[1].split(",")]
+    except (ValueError, IndexError):
+        return None
+
+
+def layout(state, canvas):
+    """Rectangles of the visuals of a snapshot state, as shares of the report canvas (0-1)."""
+    x0, y0, width, height = canvas
+    rects = []
+    for key in state[1]:
+        r = key_rect(key)
+        if r and width and height:
+            rects.append(((r[0] - x0) / width, (r[1] - y0) / height, r[2] / width, r[3] / height))
+    return rects
+
+
+def same_rect(a, b, tolerance=0.025):
+    return all(abs(p - q) <= tolerance for p, q in zip(a, b))
+
+
+def covered(rects, cells=120):
+    """Share of the canvas (0-1) the union of these rectangles covers."""
+    grid = np.zeros((cells, cells), dtype=bool)
+    for x, y, w, h in rects:
+        left, top = max(0, int(x * cells)), max(0, int(y * cells))
+        right, bottom = min(cells, int(np.ceil((x + w) * cells))), min(cells, int(np.ceil((y + h) * cells)))
+        if right > left and bottom > top:
+            grid[top:bottom, left:right] = True
+    return float(grid.mean())
+
+
+def match_page(definition, rects):
+    """The report page whose visual positions fit what is on screen best, or None."""
+    best, score = None, 0.0
+    for page in definition:
+        width, height = page["size"]
+        expected = [(x / width, y / height, w / width, h / height) for x, y, w, h in page["rects"]]
+        if not rects or not expected:
+            continue
+        hits = sum(1 for r in rects if any(same_rect(r, e) for e in expected))
+        fit = hits / len(rects)
+        if fit > score:
+            best, score = page, fit
+    return best if score >= 0.5 else None
+
+
+def screen_state(page, frame):
+    """(state, canvas): the snapshot state and the report canvas in page coordinates."""
+    visuals, canvas = collect(page, frame)
+    shown = [v for v in visuals if v["shown"]]
+    return (where(frame), frozenset(v["key"] for v in shown)), canvas
 
 
 # ---------- screenshot overlay ----------
@@ -1062,12 +1170,23 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
     tab_stops = 0
     report_counts = collections.defaultdict(collections.Counter)
     by_page, items = [], []
+    definition, reached, overlays = [], {}, []  # report pages; hidden pages reached; bookmark overlays
     deadline = time.time() + explore_seconds if explore_seconds else None
     known = set()  # visual sets of the pages checked so far
     context = browser.new_context(viewport=VIEWPORT, locale="en-US")
     try:
         page = context.new_page()
         page.set_default_timeout(30000)
+
+        def on_response(response):
+            if definition or "modelsandexploration" not in response.url.lower():
+                return
+            try:
+                definition.extend(report_definition(response.json()))
+            except Exception:
+                pass
+
+        page.on("response", on_response)
 
         def load():
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -1090,9 +1209,30 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             seen, tips = set(), (set() if tooltips else None)
             page_slug = slugify(name, 40)
 
-            def add(audited, label=None, state=0):
+            def add(audited, label=None, state=0, area=None):
                 nonlocal tab_stops
                 checks, state_notes, image, counts, described = audited
+                filename = f'{row["report_id"]}_p{number:02d}' + (f"s{state:02d}" if state else "") + ("_" + page_slug if page_slug else "") + ".png"
+                title = (name or f"Page {number}") + (f" · after {label}" if label else "")
+                if area:
+                    found = match_page(definition, area["rects"]) if area["hidden"] else None
+                    page_name = found["name"] if found else ("hidden page" if area["hidden"] else name)
+                    first = reached.get(page_name) if area["hidden"] else None
+                    source = match_page(definition, area.get("origin") or []) if area.get("origin") else None
+                    origin_name = source["name"] if source else (name or f"Page {number}")
+                    if area["hidden"] and first is None:
+                        reached[page_name] = {"rects": area["rects"], "via": label or "", "from": origin_name,
+                                              "image": filename, "matched": bool(found)}
+                        title = f"{page_name} (hidden page, via {label})"
+                    else:
+                        before = first["rects"] if first else area["base"]
+                        new = [r for r in area["rects"] if not any(same_rect(r, b, 0.01) for b in before)]
+                        share = covered(new)
+                        if share >= 0.02:
+                            overlays.append({"page": page_name or f"Page {number}", "label": label or "",
+                                             "area": round(share, 2), "image": filename})
+                        if first:
+                            title = f"{page_name} (hidden page) · after {label}"
                 items.extend(describe(v, d, number) for v, d in described)
                 for group, counter in counts.items():
                     page_counts[group].update(counter)
@@ -1102,9 +1242,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                     totals[test][2] += checks[test][2]
                 tab_stops += checks["tab_order"][3]
                 notes.extend(state_notes)
-                tail = (f"s{state:02d}" if state else "") + ("_" + page_slug if page_slug else "")
-                title = (name or f"Page {number}") + (f" · after {label}" if label else "")
-                images.append((f'{row["report_id"]}_p{number:02d}{tail}.png', image, title.replace(";", ","), state))
+                images.append((filename, image, title.replace(";", ","), state))
 
             def open_fresh(path):
                 fresh = load()
@@ -1125,7 +1263,11 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                 else:
                     open_page(page, frame, kind, index)
                 page.mouse.move(*PARK)
-                add(audit_page(page, frame, prefix, seen, tips))
+                start_area = None
+                if kind == "start":
+                    start, start_canvas = screen_state(page, frame)
+                    start_area = {"hidden": True, "rects": layout(start, start_canvas), "base": []}
+                add(audit_page(page, frame, prefix, seen, tips), area=start_area)
                 if max_states and deadline and time.time() > deadline:
                     notes.append(f"{prefix}: time limit reached, buttons not tried")
                 elif max_states:
@@ -1163,6 +1305,33 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                   visuals_core_data_types=listing(report_counts["data"]),
                   visuals_custom_types=listing(report_counts["custom"]), visuals_by_page="; ".join(by_page),
                   visuals_items=json.dumps(items, ensure_ascii=False, separators=(",", ":")))
+    visible = sum(1 for kind, _, _ in pages if kind != "start") if "pages" in locals() else 0
+    area_pages = []
+    for page_def in definition:
+        hit = reached.get(page_def["name"])
+        area_pages.append({"name": page_def["name"], "kind": page_def["kind"], "reached": bool(hit),
+                           "via": hit["via"] if hit else "", "from": hit["from"] if hit else None,
+                           "image": hit["image"] if hit else ""})
+    for page_name, hit in reached.items():  # hidden pages reached but not matched to the definition
+        if not any(p["name"] == page_name for p in area_pages):
+            area_pages.append({"name": page_name, "kind": "hidden", "reached": True, "via": hit["via"],
+                               "from": hit["from"], "image": hit["image"]})
+    hidden_reached = sum(1 for p in area_pages if p["kind"] in ("hidden", "drillthrough") and p["reached"])
+    overlay_total = round(sum(o["area"] for o in overlays), 1)
+    total = round(visible + hidden_reached + overlay_total, 1)
+    if definition or reached or overlays:
+        hidden_all = sum(1 for p in area_pages if p["kind"] == "hidden")
+        result["report_area_summary"] = (
+            f"{visible} visible page{'s' if visible != 1 else ''}"
+            + (f" + {hidden_reached} hidden page{'s' if hidden_reached != 1 else ''} reached" if hidden_reached else "")
+            + (f" + bookmark overlays {overlay_total}" if overlays else "") + f" = {total} pages"
+            + (f" ({hidden_all} hidden in total)" if hidden_all else "")
+            + "".join(f"; {count} {label} page{'s' if count != 1 else ''} (not counted)" for label, count in
+                      (("tooltip", sum(1 for p in area_pages if p["kind"] == "tooltip")),
+                       ("drillthrough", sum(1 for p in area_pages if p["kind"] == "drillthrough"))) if count))
+        result["report_area"] = json.dumps({"defined": bool(definition), "visible": visible, "total": total,
+                                            "pages": area_pages, "overlays": overlays},
+                                           ensure_ascii=False, separators=(",", ":"))
     for test, (passed, checked, issues) in totals.items():
         result[f"{test}_checked"] = str(checked)
         result[f"{test}_score"] = str(round(100 * passed / checked)) if checked else ""
