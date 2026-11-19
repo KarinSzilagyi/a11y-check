@@ -55,7 +55,7 @@
   color-scheme: dark;
 }
 
-/* Visual categories in "Visuals used": six hues checked as a set (lightness band, chroma, colour-blind
+/* Visual categories in "Pages and visuals": six hues checked as a set (lightness band, chroma, colour-blind
    separation of neighbours, 3:1 against the page) in both themes. Squares stay grouped in a fixed order,
    each category has a texture, and every square has a legend entry and a tooltip. */
 :root { --v-core: #3987E5; --v-custom: #D95926; --v-text: #199E70; --v-shape: #C98500; --v-image: #D55181; --v-button: #0CA30C;
@@ -76,6 +76,7 @@ a { color: var(--brand); text-underline-offset: 3px; }
 svg.i { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--ink-2); }
+.nowrap { white-space: nowrap; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .wrap { max-width: 1240px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
 .skip { position: absolute; left: 12px; top: -60px; background: var(--on-dark); color: #111111; padding: 8px 14px; z-index: 40; font-weight: 700; }
@@ -572,7 +573,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       <div class="tabbar">
         <div role="tablist" aria-label="Sections" id="tablist">
           <button role="tab" id="tab-results" data-tab="results" aria-controls="results" aria-selected="false" tabindex="-1" hidden>Results <span class="badge" id="badge-issues"></span></button>
-          <button role="tab" id="tab-visuals" data-tab="visuals" aria-controls="visuals" aria-selected="false" tabindex="-1" hidden>Visuals used</button>
+          <button role="tab" id="tab-visuals" data-tab="visuals" aria-controls="visuals" aria-selected="false" tabindex="-1" hidden>Pages and visuals</button>
           <button role="tab" id="tab-taborder" data-tab="tab-order" aria-controls="tab-order" aria-selected="false" tabindex="-1" hidden>Tab order</button>
           <span class="tabsep" id="tabsep" aria-hidden="true" hidden></span>
           <button role="tab" id="tab-checks" data-tab="checks" aria-controls="checks" aria-selected="true" tabindex="0">What we check</button>
@@ -594,7 +595,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       </div>
 
       <div role="tabpanel" id="visuals" aria-labelledby="tab-visuals" tabindex="0" hidden>
-        <div class="panel-h"><h2>Visuals used</h2><p>Core visuals ship with Power BI. Custom visuals come from AppSource or a file and run in a sandbox, which is how we tell them apart.</p></div>
+        <div class="panel-h"><h2>Pages and visuals</h2><p>How much report a viewer can reach, how big each page is, and every visual on it. Core visuals ship with Power BI. Custom visuals come from AppSource or a file and run in a sandbox, which is how we tell them apart.</p></div>
         <div class="card area" id="area" hidden></div>
         <div class="stats" id="stats"></div>
         <div class="legend" id="vlegend"></div>
@@ -628,7 +629,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-keyboard"/></svg></span><div><h3>Keyboard access</h3><span class="sc">WCAG 2.1.1</span></div></div><p>Every data or interactive visual can be reached with the Tab key.</p></li>
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-order"/></svg></span><div><h3>Tab order</h3><span class="sc">WCAG 2.4.3</span></div></div><p>Tab moves left to right, top to bottom, the way people read the page. We draw it on a screenshot of each page.</p></li>
           <li class="card"><div class="h"><span class="tile"><svg class="i"><use href="#i-bookmark"/></svg></span><div><h3>Buttons and tooltips</h3><span class="sc">All five checks</span></div></div><p>We click every bookmark button and check each view it opens, and hover the charts to check report-page tooltips.</p></li>
-          <li class="card extra"><div class="h"><span class="tile"><svg class="i"><use href="#i-layers"/></svg></span><div><h3>Visuals used</h3><span class="sc">Inventory, not scored</span></div></div><p>How many core and custom visuals each page uses, which ones, and what each text box, shape, image and button is.</p></li>
+          <li class="card extra"><div class="h"><span class="tile"><svg class="i"><use href="#i-layers"/></svg></span><div><h3>Pages and visuals</h3><span class="sc">Inventory, not scored</span></div></div><p>How many pages viewers can reach and how big they are, how many core and custom visuals each page uses, and what each visual, text box, shape, image and button is.</p></li>
         </ul>
       </div>
 
@@ -949,7 +950,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     }).join("");
   }
 
-  // ---- "Visuals used", one square per visual (results with visuals.items) ----
+  // ---- "Pages and visuals", one square per visual (results with visuals.items) ----
   const CATS = [["core", "Core", "Core visual"], ["custom", "Custom", "Custom visual"], ["text", "Text box", "Text box"],
     ["shape", "Shape", "Shape"], ["image", "Image", "Image"], ["button", "Button", "Button"]];
   const CAT_NAME = Object.fromEntries(CATS.map(([k, , n]) => [k, n]));
@@ -962,6 +963,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
   }
   function itemDetail(it) {
     const alt = it.alt ? "alt text: " + cut(it.alt, 80) : "no alt text";
+    if (it.cat === "core" || it.cat === "custom") return (it.title ? "“" + cut(it.title, 50) + "” · " : "") + alt;
     if (it.cat === "text") return it.text ? "“" + cut(it.text, 70) + "”" : "empty";
     if (it.cat === "button") return (it.text ? "shows “" + cut(it.text, 40) + "”" : "icon only") + " · " + (it.alt ? "label: " + cut(it.alt, 60) : "no label");
     if (it.cat === "shape") return (it.text ? "text “" + cut(it.text, 40) + "” · " : "") + (it.hidden ? "hidden from screen readers" : alt);
@@ -1003,7 +1005,9 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
   }
 
   function itemDetails(items) {
-    const of = k => items.filter(it => it.cat === k).sort((a, b) => (a.p - b.p) || byPos(a, b));
+    // In the order of the tab-order screenshots: page, then button view, then tab stop (none last).
+    const of = k => items.filter(it => it.cat === k).sort((a, b) => (a.p - b.p) || ((a.view || 0) - (b.view || 0))
+      || ((a.stop || 1e9) - (b.stop || 1e9)) || byPos(a, b));
     const mark = (text, words) => {
       let out = esc(text);
       (words || []).forEach(w => { out = out.replace(new RegExp("\\b(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")\\b", "i"), "<mark>$1</mark>"); });
@@ -1021,15 +1025,37 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     const reader = it => it.hidden ? '<span class="pill plain">Skipped (decorative)</span>'
       : it.alt ? '<span class="pill ok">Alt text</span> ' + esc(cut(it.alt, 90)) : '<span class="pill bad">No alt text</span>';
     const none = '<span class="muted">none</span>';
+    // Its number on the tab-order screenshot of the page, or of the button view it first appeared in.
+    const stop = it => it.stop ? '<span class="num">' + it.stop + "</span>" + (it.view ? ' <span class="muted nowrap">view ' + it.view + "</span>" : "")
+      : '<span class="muted">–</span>';
     const block = (k, title, head, rows) => {
       const list = of(k);
       if (!list.length) return "";
       return '<details class="card ldet"><summary><i class="u ' + k + '" aria-hidden="true"></i>' + title + " <em>" + list.length + "</em></summary>"
-        + '<div class="scroll"><table><thead><tr><th>Page</th>' + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>"
-        + list.map(it => '<tr><td class="num">' + it.p + "</td>" + rows(it).map(c => "<td>" + c + "</td>").join("") + "</tr>").join("")
+        + '<div class="scroll"><table><thead><tr><th>Page</th><th title="The number on the tab-order screenshot">Tab stop</th>' + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>"
+        + list.map(it => '<tr><td class="num">' + it.p + "</td><td>" + stop(it) + "</td>" + rows(it).map(c => "<td>" + c + "</td>").join("") + "</tr>").join("")
         + "</tbody></table></div></details>";
     };
-    return "<h3>Layout elements in detail</h3>"
+    // What a core visual shows, as far as the page reveals it.
+    const shows = it => [
+      it.legend ? "Legend: " + esc(cut(it.legend.join(", "), 90)) : "",
+      it.axes ? "Axes: " + esc(cut(it.axes.join(", "), 90)) : "",
+      it.columns ? "Columns: " + esc(cut(it.columns.join(", "), 110)) : "",
+      it.points ? it.points + (it.points === 1 ? " data point" : " data points") : "",
+      it.text ? "“" + esc(cut(it.text, 110)) + "”" : ""].filter(Boolean).join("<br>") || none;
+    const titled = it => it.title ? esc(it.title) + (it.subtitle ? '<br><span class="muted">' + esc(it.subtitle) + "</span>" : "")
+      : '<span class="muted">no title</span>';
+    const dataReader = it => it.alt ? '<span class="pill ok">Alt text</span> ' + esc(cut(it.alt, 90)) : '<span class="pill bad">No alt text</span>';
+    const keys = it => it.hidden ? '<span class="pill bad">Skipped by Tab</span>' : '<span class="pill ok">Reachable</span>';
+    const data = items.some(it => it.cat === "core" || it.cat === "custom");
+    const layoutCount = items.filter(it => !["core", "custom"].includes(it.cat)).length;
+    return (data ? "<h3>Data visuals in detail</h3>" : "")
+      + block("core", "Core visuals", ["Visual", "Title", "Size (px)", "Shows", "Screen reader", "Keyboard"], it => [esc(it.kind), titled(it),
+        (it.size || []).join(" × "), shows(it), dataReader(it), keys(it)])
+      + block("custom", "Custom visuals", ["Visual", "Title", "Size (px)", "Screen reader", "Keyboard"], it => [esc(it.kind), titled(it),
+        (it.size || []).join(" × "), dataReader(it), keys(it)])
+      + (data && items.some(it => it.cat === "custom") ? '<p class="small muted">A custom visual draws inside its own sandbox, so the check can read its title and alt text but not its legend, axes or data points.</p>' : "")
+      + (layoutCount ? "<h3>Layout elements in detail</h3>" : "")
       + block("text", "Text boxes", ["Role", "Text, keywords marked"], it => ['<span class="pill mid">' + esc(it.kind) + "</span>",
         it.text ? mark(it.text, it.words) : none])
       + block("shape", "Shapes", ["Shape", "Size (px)", "Fill", "Text on it", "Screen reader"], it => [
@@ -1052,21 +1078,32 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     tooltip: "A tooltip page: it only appears, small, while viewers hover over a chart. Not counted as report area.",
     overlay: "A bookmark that shows extra visuals on top of the page. The number is the share of the page those visuals cover: 0.6× page = 60% of the page."
   };
+  // A page's size in Power BI and its page view. A tall page shown fit to width scrolls; it still counts as one page.
+  const FIT = { page: "fit to page", width: "fit to width", actual: "actual size" };
+  const longer = p => p.size && p.size[0] && p.size[1] / p.size[0] > 9 / 16 * 1.05;
+  function pageSize(p) {
+    if (!p.size || !p.size[0]) return '<span class="muted">–</span>';
+    const [w, h] = p.size, ratio = h / w;
+    const shape = Math.abs(ratio - 9 / 16) < 0.01 ? "16:9" : Math.abs(ratio - 3 / 4) < 0.01 ? "4:3"
+      : longer(p) ? (h / (w * 9 / 16)).toFixed(1) + "× as tall as 16:9" : "wider than 16:9";
+    const scrolls = longer(p) && p.fit !== "page" ? " · scrolls" : "";
+    return '<span class="nowrap">' + Math.round(w) + " × " + Math.round(h) + '</span><br><span class="muted">' + shape + (p.fit ? " · " + FIT[p.fit] : "") + scrolls + "</span>";
+  }
   function areaHtml(area, r) {
     const pageShot = name => { const img = r.images.find(i => !i.state && i.name === name); return img ? img.url : ""; };
     const bar = v => '<span class="abar"><span aria-hidden="true"><i style="width:' + Math.min(100, Math.round(v * 100)) + '%"></i></span>' + v.toFixed(1) + "× page</span>";
     const rows = [];
     area.pages.forEach(p => {
       if (p.kind === "tooltip") { rows.push({ pill: '<span class="pill plain">Tooltip page</span>', name: p.name, size: '<span class="muted">not counted</span>',
-        how: "hovering a chart", info: "tooltip", shot: "" }); return; }
-      if (p.kind === "visible") rows.push({ pill: '<span class="pill plain">Visible page</span>', name: p.name, size: bar(1), how: "page list", info: "visible", shot: pageShot(p.name) });
+        how: "hovering a chart", info: "tooltip", shot: "", canvas: pageSize(p) }); return; }
+      if (p.kind === "visible") rows.push({ pill: '<span class="pill plain">Visible page</span>', name: p.name, size: bar(1), how: "page list", info: "visible", shot: pageShot(p.name), canvas: pageSize(p) });
       else if (p.reached) rows.push({ pill: '<span class="pill mid">' + (p.kind === "drillthrough" ? "Drillthrough page, button reached" : "Hidden, reachable") + "</span>", name: p.name, size: bar(1),
-        how: "button “" + esc(p.via) + "”" + (p.from ? " on " + (typeof p.from === "number" ? "page " + p.from : "“" + esc(p.from) + "”") : ""), info: p.kind === "drillthrough" ? "drillthrough" : "hidden", shot: p.image });
+        how: "button “" + esc(p.via) + "”" + (p.from ? " on " + (typeof p.from === "number" ? "page " + p.from : "“" + esc(p.from) + "”") : ""), info: p.kind === "drillthrough" ? "drillthrough" : "hidden", shot: p.image, canvas: pageSize(p) });
       else rows.push({ pill: '<span class="pill plain">' + (p.kind === "drillthrough" ? "Drillthrough page" : "Hidden, not reached") + "</span>", name: p.name,
-        size: '<span class="muted">not counted</span>', how: p.kind === "drillthrough" ? "right-click › Drill through" : '<span class="muted">no button found</span>', info: p.kind === "drillthrough" ? "drillthrough" : "unreached", shot: "" });
+        size: '<span class="muted">not counted</span>', how: p.kind === "drillthrough" ? "right-click › Drill through" : '<span class="muted">no button found</span>', info: p.kind === "drillthrough" ? "drillthrough" : "unreached", shot: "", canvas: pageSize(p) });
     });
     area.overlays.forEach(o => rows.push({ pill: '<span class="pill ok">Bookmark overlay</span>', name: o.label || "bookmark", size: bar(o.area),
-      how: "on " + esc(o.page), info: "overlay", shot: o.image }));
+      how: "on " + esc(o.page), info: "overlay", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }));
     const rank = { visible: 0, hidden: 1, overlay: 2, unreached: 3, drillthrough: 4, tooltip: 5 };
     rows.sort((a, b) => rank[a.info] - rank[b.info]);
     const tooltips = area.pages.filter(p => p.kind === "tooltip").length;
@@ -1076,6 +1113,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     const extra = [tooltips ? plural(tooltips, "tooltip page", "tooltip pages") : "", drills ? plural(drills, "drillthrough page", "drillthrough pages") : "",
       notReached ? plural(notReached, "hidden page not reached", "hidden pages not reached") : ""].filter(Boolean);
     const hiddenReached = area.pages.filter(p => p.kind !== "visible" && p.kind !== "tooltip" && p.reached).length;
+    const long = area.pages.filter(p => (p.kind === "visible" || (p.kind !== "tooltip" && p.reached)) && longer(p)).length;
     const overlaySum = area.overlays.reduce((s, o) => s + o.area, 0);
     const parts = [area.visible + (area.visible === 1 ? " visible page" : " visible pages")];
     if (hiddenReached) parts.push(hiddenReached + (hiddenReached === 1 ? " hidden page reached" : " hidden pages reached"));
@@ -1084,17 +1122,19 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       + '<span class="ic" aria-hidden="true">i</span>What this means</button></div>'
       + '<p class="area-sum"><b>' + area.total.toFixed(1) + " pages</b>" + parts.join(" + ") + "</p>"
       + (extra.length ? '<p class="small muted">Also in the report, not counted: ' + extra.join(", ") + ".</p>" : "")
+      + (long ? '<p class="small muted">' + (long === 1 ? "1 page is" : long + " pages are") + " taller than 16:9, see Page size. Each still counts as 1 page.</p>" : "")
       + '<div class="area-info" id="area-info" hidden><p>How much report a viewer can actually reach, for example to check a page limit:</p><ul>'
       + "<li><b>Visible pages</b> are in the page list.</li><li><b>Hidden pages</b> aren't in the page list, but a button can open them. They count when the check reached one.</li>"
       + "<li><b>Bookmark overlays</b> are views a bookmark button shows on top of a page; each counts with the share of the page it covers.</li>"
+      + "<li><b>Page size</b> is the page's size in Power BI and its page view. Most pages are 16:9 (1280 × 720). A taller page shown fit to width scrolls; it still counts as 1 page, however long it is.</li>"
       + "<li><b>Tooltip pages</b> only appear, small, while hovering a chart. Not counted" + (tooltips ? " (this report has " + tooltips + ")" : "") + ".</li>"
       + "<li><b>Drillthrough pages</b> open by right-clicking a data point. Not counted unless a button also opens them" + (drills ? " (this report has " + drills + ")" : "") + ".</li></ul>"
       + "<p>The check clicks every bookmark and page-navigation button it can reach, within its time and view limits, so a hidden page reachable only through a button it didn't try shows as not reached. Use ⓘ on a row for its screenshot.</p>"
       + (area.defined ? "" : "<p>This report didn't share its page list, so only hidden pages the check reached are listed.</p>") + "</div>"
-      + '<div class="scroll"><table><thead><tr><th>Kind</th><th>Page or bookmark</th><th>Size</th><th>How viewers get there</th><th><span class="sr">Details</span></th></tr></thead><tbody>'
-      + rows.map((row, i) => "<tr><td>" + row.pill + "</td><td>" + esc(row.name) + "</td><td>" + row.size + "</td><td>" + row.how + "</td>"
+      + '<div class="scroll"><table><thead><tr><th>Kind</th><th>Page or bookmark</th><th>Counts as</th><th>Page size</th><th>How viewers get there</th><th><span class="sr">Details</span></th></tr></thead><tbody>'
+      + rows.map((row, i) => "<tr><td>" + row.pill + "</td><td>" + esc(row.name) + "</td><td>" + row.size + "</td><td>" + row.canvas + "</td><td>" + row.how + "</td>"
         + '<td><button type="button" class="info-btn" aria-expanded="false" aria-controls="area-row-' + i + '" data-toggle="area-row-' + i + '" aria-label="About ' + esc(row.name) + '"><span class="ic" aria-hidden="true">i</span></button></td></tr>'
-        + '<tr class="more" id="area-row-' + i + '" hidden><td colspan="5"><div class="shot-box"><span>' + esc(AREA_INFO[row.info]) + "</span>"
+        + '<tr class="more" id="area-row-' + i + '" hidden><td colspan="6"><div class="shot-box"><span>' + esc(AREA_INFO[row.info]) + "</span>"
         + (row.shot ? '<a href="' + esc(API + row.shot) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + esc(API + row.shot) + '" alt="Screenshot of ' + esc(row.name) + ', with its tab stops numbered"></a>' : "")
         + "</div></td></tr>").join("")
       + "</tbody></table></div>";
@@ -1175,7 +1215,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     $("area").innerHTML = r.area ? areaHtml(r.area, r) : "";
     const items = v.items || [];
     $("picked").hidden = !items.length;
-    $("ldetail").hidden = !items.some(it => !["core", "custom"].includes(it.cat));
+    $("ldetail").hidden = !items.length;
     if (items.length) {
       $("vlegend").className = "legend grouped";
       $("vlegend").innerHTML = itemLegend(items);

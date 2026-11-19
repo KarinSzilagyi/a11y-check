@@ -26,7 +26,12 @@ each bookmark view covers with visuals it adds (0.6 = 60% of the page). report_a
 one line, e.g. "1 visible page + 3 hidden pages reached + bookmark overlays 0.8 = 4.8 pages".
 visuals_items is the same inventory one visual at a time (JSON, see describe()): its category
 (core, custom, text, shape, image, button), a sub-kind (shape outline, image format, text role,
-button action), its visible text or the words inside an SVG image, and its alt text.
+button action), its visible text or the words inside an SVG image, and its alt text. Core and custom
+visuals add their size and title; core visuals also their legend entries, axis titles, table columns,
+number of data points, or (cards, slicers) the text they show. stop is the visual's number on the
+tab-order screenshot (none: Tab skips it); view is set when the visual first appeared in a button view.
+report_area also lists each page's size in Power BI (e.g. 1280 x 720) and its page view: fit to page,
+fit to width (a tall page then scrolls) or actual size. A long page still counts as one page.
 Automated results are evidence; they do not replace a manual check.
 """
 
@@ -70,7 +75,15 @@ ACTION = re.compile(r"^(Bookmark|Page navigation)\b\s*", re.I)
 MAX_STATES = 10     # extra states (after a button click) checked per page
 MAX_CLICKS = 40     # button clicks per page
 MAX_HOVERS = 12     # tooltip hovers per state
-PARK = (VIEWPORT["width"] // 2, VIEWPORT["height"] - 6)  # the mouse rests on the viewer's bottom bar
+MAX_WINDOW = {"width": 4000, "height": 8000}  # a taller or wider report page grows the window up to this
+
+
+def park(page):
+    """Rests the mouse on the viewer's bottom bar, wherever the (possibly enlarged) window ends."""
+    size = page.viewport_size
+    page.mouse.move(size["width"] // 2, size["height"] - 6)
+
+
 TIP_SCOPE = "[data-a11y-tip]"
 # Built-in layout elements, by aria-roledescription with spaces removed, lower case.
 LAYOUT_TYPES = {"textbox", "img", "image", "shape", "button", "actionbutton", "pagenavigator", "bookmarknavigator", "navigator"}
@@ -118,6 +131,11 @@ DETAIL_JS = """indices => {
         const v = all[i];
         if (!v) return null;
         const has = sel => !!v.querySelector(sel);
+        // SVG labels repeat their text in a <title> child (the hover text): leave that out.
+        const clean = e => { const t = e.querySelector('title'), all = e.innerText || e.textContent || '';
+            return (t ? all.replace(t.textContent, '') : all).trim().replace(/\\s+/g, ' '); };
+        const texts = (sel, n, len = 60) => [...new Set(Array.from(v.querySelectorAll(sel)).map(clean).filter(Boolean))].slice(0, n).map(t => t.slice(0, len));
+        const first = sel => texts(sel, 1, 120)[0] || '';
         const kind = has('.visual-shape, .shapeVisual') ? 'shape' : has('.visual-image, .imageContainer') ? 'image'
             : has('.visual-textbox') ? 'text' : has('.visual-actionButton, .bookmarkNavigator, .pageNavigator') ? 'button' : '';
         const path = v.querySelector('svg path');
@@ -128,7 +146,11 @@ DETAIL_JS = """indices => {
             fill: shapeEl ? getComputedStyle(shapeEl).fill : '', stroke: shapeEl ? getComputedStyle(shapeEl).stroke : '',
             img: src.startsWith('data:image/svg') ? 'svg' : src ? 'picture' : '',
             svg: src.startsWith('data:image/svg') ? src.slice(0, 200000) : '',
-            text: (v.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 400)};
+            text: (v.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 400),
+            // Core and custom visuals: the title area (outside a custom visual's sandbox) and what a chart shows.
+            title: first('.visualTitle'), subtitle: first('.visualSubTitle, [class*="subTitle"], [class*="SubTitle"]'),
+            legend: texts('.legendText, .legend-item-text, [class*="legendText"]', 8), axes: texts('.xAxisLabel, .yAxisLabel', 4),
+            columns: texts('[role="columnheader"]', 10), points: v.querySelectorAll('[role="option"]').length};
     });
 }"""
 
@@ -314,6 +336,47 @@ def wait_rendered(page, frame, settle_ms=4000):
         if stable >= 3:
             break
     page.wait_for_timeout(settle_ms)  # custom visuals render after their containers
+
+
+OVERFLOW_JS = """() => {
+    const host = document.querySelector('.visualContainerHost');
+    if (!host) return [0, 0];
+    const r = host.getBoundingClientRect();
+    let x = Math.ceil(r.right - innerWidth), y = Math.ceil(r.bottom - innerHeight);
+    for (let c = host.parentElement; c && c !== document.documentElement; c = c.parentElement) {
+        const s = getComputedStyle(c);
+        if (/(auto|scroll)/.test(s.overflowY)) y = Math.max(y, c.scrollHeight - c.clientHeight);
+        if (/(auto|scroll)/.test(s.overflowX)) x = Math.max(x, c.scrollWidth - c.clientWidth);
+    }
+    return [x, y];
+}"""
+
+
+def fit_window(page, frame):
+    """Sizes the browser window so the whole report page shows without scrolling. Reports that are not
+    16:9 (tall pages shown fit to width, or actual size) otherwise scroll, and everything outside the
+    window is left out of the screenshot and the checks. Returns a note when the page still does not fit."""
+    if page.viewport_size != VIEWPORT:
+        page.set_viewport_size(VIEWPORT)  # each page starts from the normal size: pages can differ
+        wait_rendered(page, frame, settle_ms=1500)
+    for _ in range(5):  # growing can change the layout again (e.g. a scrollbar disappears)
+        right, bottom = frame.evaluate(OVERFLOW_JS)
+        if right <= 2 and bottom <= 2:
+            return ""
+        size = page.viewport_size
+        # Grow only the side that overflows: on a fit-to-width page a wider window also makes the page taller.
+        grow = lambda current, extra, limit: min(current + extra + 20, limit) if extra > 2 else current
+        grown = {"width": grow(size["width"], right, MAX_WINDOW["width"]),
+                 "height": grow(size["height"], bottom, MAX_WINDOW["height"])}
+        if grown == size:
+            break
+        page.set_viewport_size(grown)
+        wait_rendered(page, frame, settle_ms=1500)
+    right, bottom = frame.evaluate(OVERFLOW_JS)
+    if right <= 2 and bottom <= 2:
+        return ""
+    return (f"page is larger than the audit window ({max(right, 0)} px wider, {max(bottom, 0)} px taller), "
+            "the part outside was not checked")
 
 
 def report_frame(page):
@@ -573,10 +636,18 @@ def describe(visual, detail, page_number):
     x, y, width, height = (round(n) for n in visual["rect"])
     item = {"p": page_number, "type": visual["type"] or "Visual", "alt": alt, "hidden": visual["tab"] == "-1",
             "pos": [x, y]}
-    if visual["sandbox"]:
-        item.update(cat="custom", kind=visual["type"] or "Custom visual")
-    elif kind not in LAYOUT_TYPES:
-        item.update(cat="core", kind=visual["type"] or "Visual")
+    if visual.get("stop"):
+        item["stop"] = visual["stop"]
+    if visual["sandbox"] or kind not in LAYOUT_TYPES:
+        core = not visual["sandbox"]
+        item.update(cat="core" if core else "custom", kind=visual["type"] or ("Visual" if core else "Custom visual"),
+                    size=[width, height], title=detail.get("title", "")[:120], subtitle=detail.get("subtitle", "")[:120])
+        if core:  # a custom visual's content is in its sandbox and can't be read
+            item.update({k: detail[k] for k in ("legend", "axes", "columns") if detail.get(k)})
+            if detail.get("points"):
+                item["points"] = detail["points"]
+            if not item["title"] and not any(detail.get(k) for k in ("legend", "axes", "columns")):
+                item["text"] = text[:120]  # cards, KPIs, slicers: what the visual shows
     elif kind in TEXT_TYPES or detail.get("kind") == "text":
         item.update(cat="text", kind=text_role(text), text=text[:160], words=keywords(text))
     elif kind in BUTTON_TYPES or detail.get("kind") == "button":
@@ -674,7 +745,7 @@ def contrast_checks(page, frames, visuals, fresh, texts, marks, prefix, record, 
     behind_text = screenshot_with(HIDE_TEXT_CSS)  # bars stay: a label inside a bar is read against the bar
     behind_marks = screenshot_with(HIDE_MARKS_CSS)
     screenshot_with(None)
-    viewport = [0, 0, VIEWPORT["width"], VIEWPORT["height"]]
+    viewport = [0, 0, page.viewport_size["width"], page.viewport_size["height"]]
     by_index = {v["i"]: v for v in visuals}
     fresh_ids = {v["i"] for v in fresh}
 
@@ -809,6 +880,8 @@ def audit_page(page, frame, prefix, seen=None, tips=None):
                 checks["tab_order"][2].append(f"{prefix} step {step}->{step + 1} goes back: {name_of(by_index[a])} -> {name_of(by_index[b])}")
 
     image = draw_tab_order(normal, canvas, shown, sequence, by_index, backwards)
+    for v in fresh:  # the number drawn on this page's (or view's) tab-order screenshot
+        v["stop"] = sequence.index(v["i"]) + 1 if v["i"] in sequence else None
     if tips is not None:
         check_tooltips(page, frame, prefix, fresh, texts, marks, tips, checks, notes)
     seen.update(v["key"] for v in shown)
@@ -836,7 +909,7 @@ def check_tooltips(page, frame, prefix, fresh, texts, marks, tips, checks, notes
         for x, y in hover_points(v, texts, marks):
             if hovers >= MAX_HOVERS:
                 notes.append(f"{prefix}: tooltips checked on the first {MAX_HOVERS} data points only")
-                page.mouse.move(*PARK)
+                park(page)
                 return
             hovers += 1
             page.mouse.move(x, y)
@@ -870,7 +943,7 @@ def check_tooltips(page, frame, prefix, fresh, texts, marks, tips, checks, notes
                 need = 3 if large else 4.5
                 recorder(checks, f"{prefix} [tooltip]")("text_contrast", ratio >= need,
                     f'"{row["text"]}" {ratio:.2f}:1 ({hexcolour(row["fg"])} on {hexcolour(row["bg"])}, needs {need:g}:1)')
-    page.mouse.move(*PARK)
+    park(page)
 
 
 # ---------- bookmark states ----------
@@ -887,7 +960,7 @@ def where(frame):
 
 def settle(page, frame):
     """Waits after a click until the number of visuals stops changing."""
-    page.mouse.move(*PARK)
+    park(page)
     page.wait_for_timeout(1200)
     previous, stable = -1, 0
     for _ in range(20):
@@ -971,15 +1044,19 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
             on_state(extra)
         add(audit_page(page, frame, f"{prefix} [view {extra}: {label}]", seen, tips), label, extra,
             {"hidden": state[0] == "hidden", "rects": layout(state, canvas), "base": base, "origin": origin})
-        page.mouse.move(*PARK)
+        park(page)
     return frame, clicks > 0, notes
 
 
 # ---------- report area: hidden pages and bookmark overlays ----------
 
+# Page view setting in Power BI (View > Page view): numbers in the older format, names in PBIR.
+FIT_MODES = {"0": "page", "fittopage": "page", "1": "width", "fittowidth": "width", "2": "actual", "actualsize": "actual"}
+
+
 def report_definition(data):
     """Pages of the report as Power BI sends them to the viewer (also hidden ones): name, kind (visible,
-    hidden, tooltip, drillthrough), size and visual rectangles. [] if the data has no report definition."""
+    hidden, tooltip, drillthrough), size, page view (fit: page, width or actual) and visual rectangles. [] if the data has no report definition."""
     exploration = (data or {}).get("exploration") or {}
     sections = exploration.get("sections") or []
     flags = {}
@@ -993,12 +1070,14 @@ def report_definition(data):
                     else "hidden" if page.get("visibility") == "HiddenInViewMode" else "visible")
             positions = [(v.get("content") or {}).get("position") or {} for v in entry.get("visualContainers") or []]
             rects = [[q.get("x", 0), q.get("y", 0), q.get("width", 0), q.get("height", 0)] for q in positions if q]
-            flags[page.get("name")] = (kind, page.get("width"), page.get("height"), rects)
+            flags[page.get("name")] = (kind, page.get("width"), page.get("height"), rects,
+                                       FIT_MODES.get(str(page.get("displayOption", "")).lower(), "page"))
     except (ValueError, AttributeError):
         pass
     pages = []
     for section in sections:
-        kind, width, height, pbir_rects = flags.get(section.get("objectName") or section.get("name"), (None, None, None, []))
+        kind, width, height, pbir_rects, fit = flags.get(section.get("objectName") or section.get("name"),
+                                                         (None, None, None, [], None))
         if kind is None:  # older format: flags in the section's config
             config = section.get("config") or "{}"
             try:
@@ -1009,12 +1088,13 @@ def report_definition(data):
                     else "drillthrough" if "Drillthrough" in config
                     else "hidden" if parsed.get("visibility") == 1 else "visible")
             width, height = section.get("width"), section.get("height")
+            fit = FIT_MODES.get(str(section.get("displayOption", "")).lower(), "page")
         rects = [[v.get("x", 0), v.get("y", 0), v.get("width", 0), v.get("height", 0)]
                  for v in section.get("visualContainers") or []]
         if pbir_rects or not any(r[2] for r in rects):  # the PBIR format keeps positions in the page files
             rects = pbir_rects
         pages.append({"name": section.get("displayName") or "", "kind": kind, "size": [width or 1280, height or 720],
-                      "rects": rects})
+                      "fit": fit or "page", "rects": rects})
     return pages
 
 
@@ -1192,7 +1272,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             loaded = report_frame(page)
             wait_rendered(page, loaded, settle_ms=6000)
-            page.mouse.move(*PARK)
+            park(page)
             return loaded
 
         frame = load()
@@ -1233,7 +1313,11 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                                              "area": round(share, 2), "image": filename})
                         if first:
                             title = f"{page_name} (hidden page) · after {label}"
-                items.extend(describe(v, d, number) for v, d in described)
+                for v, d in described:
+                    item = describe(v, d, number)
+                    if state:  # first seen in a button view: its tab stop is on that view's screenshot
+                        item["view"] = state
+                    items.append(item)
                 for group, counter in counts.items():
                     page_counts[group].update(counter)
                 for test in TESTS:
@@ -1244,9 +1328,12 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                 notes.extend(state_notes)
                 images.append((filename, image, title.replace(";", ","), state))
 
+            fit_note = [""]
+
             def open_fresh(path):
                 fresh = load()
                 open_page(page, fresh, kind, index)
+                fit_note[0] = fit_window(page, fresh)  # before any click: button positions depend on the size
                 for key in path:
                     _, buttons = snapshot(page, fresh)
                     button = next((b for b in buttons if b[0] == key), None)
@@ -1262,7 +1349,10 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                     changed = False
                 else:
                     open_page(page, frame, kind, index)
-                page.mouse.move(*PARK)
+                    fit_note[0] = fit_window(page, frame)
+                if fit_note[0]:
+                    notes.append(f"{prefix}: {fit_note[0]}")
+                park(page)
                 start_area = None
                 if kind == "start":
                     start, start_canvas = screen_state(page, frame)
@@ -1311,7 +1401,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         hit = reached.get(page_def["name"])
         area_pages.append({"name": page_def["name"], "kind": page_def["kind"], "reached": bool(hit),
                            "via": hit["via"] if hit else "", "from": hit["from"] if hit else None,
-                           "image": hit["image"] if hit else ""})
+                           "image": hit["image"] if hit else "", "size": page_def["size"], "fit": page_def["fit"]})
     for page_name, hit in reached.items():  # hidden pages reached but not matched to the definition
         if not any(p["name"] == page_name for p in area_pages):
             area_pages.append({"name": page_name, "kind": "hidden", "reached": True, "via": hit["via"],
