@@ -338,6 +338,8 @@ def wait_rendered(page, frame, settle_ms=4000):
     page.wait_for_timeout(settle_ms)  # custom visuals render after their containers
 
 
+# How far the report page reaches past what the report frame shows: (right, bottom) in pixels.
+# Covers a scrolling canvas (fit to width, actual size) and a page cut off by the frame's edge.
 OVERFLOW_JS = """() => {
     const host = document.querySelector('.visualContainerHost');
     if (!host) return [0, 0];
@@ -1389,8 +1391,8 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         image.save(tab_dir / filename, optimize=True)
     result["tab_order_images"] = "; ".join(image[0] for image in images)
     result["tab_order_titles"] = "; ".join(image[2] for image in images)
-    data, layout, custom = (sum(report_counts[g].values()) for g in ("data", "layout", "custom"))
-    result.update(visuals_core_data=str(data), visuals_core_layout=str(layout), visuals_custom=str(custom),
+    data, layout_count, custom = (sum(report_counts[g].values()) for g in ("data", "layout", "custom"))
+    result.update(visuals_core_data=str(data), visuals_core_layout=str(layout_count), visuals_custom=str(custom),
                   visuals_core_share=str(round(100 * data / (data + custom))) if data + custom else "",
                   visuals_core_data_types=listing(report_counts["data"]),
                   visuals_custom_types=listing(report_counts["custom"]), visuals_by_page="; ".join(by_page),
