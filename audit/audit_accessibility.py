@@ -115,11 +115,22 @@ VISUALS_JS = """scope => {
             const own = stack.findIndex(e => v.contains(e));
             if (own < 0 || !stack.slice(0, own).some(e => e.closest('.visualContainer') && opaque(e))) covered = false;
         }
+        // A bookmark or page navigator is one visual with a button per bookmark or page: each is a click target of its own.
+        const navs = Array.from(v.querySelectorAll(['.visual-bookmarkNavigator', '.bookmarkNavigator', '.visual-pageNavigator', '.pageNavigator']
+            .map(s => s + ' [role="button"]').join(', '))).map(b => {
+            const q = b.getBoundingClientRect(), x = q.x + q.width / 2, y = q.y + q.height / 2;
+            const top = q.width >= 2 && q.height >= 2 && x >= 0 && y >= 0 && x < innerWidth && y < innerHeight
+                ? document.elementFromPoint(x, y) : null;
+            return {label: (b.getAttribute('aria-label') || b.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 60),
+                hit: top && b.contains(top) ? [x, y] : null, page: !!b.closest('.visual-pageNavigator, .pageNavigator')};
+        });
         return {i, type: (v.getAttribute('aria-roledescription') || '').trim(), tab: v.getAttribute('tabindex'),
             label: (v.getAttribute('aria-label') || '').trim(), text: (v.innerText || '').trim().slice(0, 40),
             rect: [r.x, r.y, r.width, r.height], canvas: v.querySelectorAll('canvas, iframe').length,
-            sandbox: !!v.querySelector('iframe[name="visual-sandbox"], iframe[src*="cvSandbox"]'), hit, covered,
-            shown: cs.visibility === 'visible' && r.width >= 2 && r.height >= 2 && parseFloat(cs.opacity) > 0.05};
+            sandbox: !!v.querySelector('iframe[name="visual-sandbox"], iframe[src*="cvSandbox"]'), hit, covered, navs,
+            // A report-page tooltip still open after hovering is not part of the page.
+            shown: cs.visibility === 'visible' && r.width >= 2 && r.height >= 2 && parseFloat(cs.opacity) > 0.05
+                && (!!scope || !v.closest('.tooltip-container'))};
     });
 }"""
 
@@ -137,12 +148,14 @@ DETAIL_JS = """indices => {
         const texts = (sel, n, len = 60) => [...new Set(Array.from(v.querySelectorAll(sel)).map(clean).filter(Boolean))].slice(0, n).map(t => t.slice(0, len));
         const first = sel => texts(sel, 1, 120)[0] || '';
         const kind = has('.visual-shape, .shapeVisual') ? 'shape' : has('.visual-image, .imageContainer') ? 'image'
-            : has('.visual-textbox') ? 'text' : has('.visual-actionButton, .bookmarkNavigator, .pageNavigator') ? 'button' : '';
+            : has('.visual-textbox') ? 'text' : has('.visual-actionButton, .visual-bookmarkNavigator, .visual-pageNavigator, .bookmarkNavigator, .pageNavigator') ? 'button' : '';
+        const nav = has('.visual-bookmarkNavigator, .bookmarkNavigator') ? 'Bookmark navigator'
+            : has('.visual-pageNavigator, .pageNavigator') ? 'Page navigator' : '';
         const path = v.querySelector('svg path');
         const shapeEl = v.querySelector('svg path, svg rect, svg ellipse');
         const img = v.querySelector('img, image');
         const src = img ? (img.getAttribute('src') || img.getAttribute('href') || '') : '';
-        return {kind, d: path ? (path.getAttribute('d') || '').slice(0, 200) : '',
+        return {kind, nav, d: path ? (path.getAttribute('d') || '').slice(0, 200) : '',
             fill: shapeEl ? getComputedStyle(shapeEl).fill : '', stroke: shapeEl ? getComputedStyle(shapeEl).stroke : '',
             img: src.startsWith('data:image/svg') ? 'svg' : src ? 'picture' : '',
             svg: src.startsWith('data:image/svg') ? src.slice(0, 200000) : '',
@@ -553,6 +566,7 @@ our we you your their they them he she his her not no but if so than then there 
 up down out over under into onto about after before again more most less very can will just also each every one two
 same both only own such too do does did has have had""".split())
 BUTTON_TYPES = {"button", "actionbutton", "bookmarknavigator", "pagenavigator", "navigator"}
+NAVIGATORS = {"bookmarknavigator": "Bookmark navigator", "pagenavigator": "Page navigator"}
 
 
 def keywords(text, limit=4):
@@ -654,7 +668,7 @@ def describe(visual, detail, page_number):
         item.update(cat="text", kind=text_role(text), text=text[:160], words=keywords(text))
     elif kind in BUTTON_TYPES or detail.get("kind") == "button":
         action = ACTION.match(label)
-        item.update(cat="button", kind=(action.group(1).capitalize() if action else "Button"),
+        item.update(cat="button", kind=detail.get("nav") or NAVIGATORS.get(kind) or (action.group(1).capitalize() if action else "Button"),
                     text=text[:80], alt=ACTION.sub("", label).strip(" .")[:160] or alt)
     elif detail.get("kind") == "shape" or (kind == "shape" and detail.get("kind") != "image"):
         outline = shape_kind(detail.get("d", ""), width, height)
@@ -694,6 +708,9 @@ def collect(page, frame, scope=None):
         visual["rect"] = to_page(visual["rect"], transform)
         if visual["hit"]:
             visual["hit"] = to_page(visual["hit"] + [0, 0], transform)[:2]
+        for nav in visual.get("navs") or []:
+            if nav["hit"]:
+                nav["hit"] = to_page(nav["hit"] + [0, 0], transform)[:2]
         visual["shown"] = (visual["shown"] and not visual["covered"]
                            and (scope is not None or inside(visual["rect"], canvas)))
         kind = visual["type"].lower()
@@ -975,28 +992,33 @@ def settle(page, frame):
     page.wait_for_timeout(800)
 
 
-def snapshot(page, frame):
+def snapshot(page, frame, skip=frozenset()):
     """(state, buttons): the state is the open page plus the set of visuals on screen; buttons are
-    (key, label, click point) of the bookmark and page-navigation buttons a click can reach."""
+    (key, label, click point) of the bookmark and page-navigation buttons a click can reach. skip: names of the
+    pages the page list shows (lower case); page navigator buttons to them are left out, those pages are checked anyway."""
     visuals, _ = collect(page, frame)
     shown = [v for v in visuals if v["shown"]]
     state = (where(frame), frozenset(v["key"] for v in shown))
     buttons = []
     for v in shown:
-        if v["hit"] and ACTION.match(v["label"]):
+        if v.get("navs"):  # bookmark or page navigator: one button per bookmark or page, the visual itself is not clicked
+            for n, nav in enumerate(v["navs"]):
+                if nav["hit"] and not (nav.get("page") and nav["label"].strip().lower() in skip):
+                    buttons.append((f'{v["key"]}#{n}', short_label(nav["label"] or f"bookmark {n + 1}"), nav["hit"]))
+        elif v["hit"] and ACTION.match(v["label"]):
             label = ACTION.sub("", v["label"]).strip() or v["text"] or v["label"].strip()
             buttons.append((v["key"], short_label(label), v["hit"]))
     return state, buttons
 
 
-def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadline, known, on_state=None):
+def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadline, known, on_state=None, skip=frozenset()):
     """Clicks every bookmark and page-navigation button the page offers, in every state reached, and checks
     each new state (page plus visuals on screen). A button is clicked once: a bookmark applies the same
     saved view wherever it is clicked. open_fresh(path) reloads the report on this page and replays the
     clicks in path; it returns the new frame. known: visual sets of the pages checked so far, so a button
     that opens one of them (a logo going to the cover page) adds nothing. Returns (frame, clicked, notes)."""
     notes = []
-    state, buttons = snapshot(page, frame)
+    state, buttons = snapshot(page, frame, skip)
     _, canvas = collect(page, frame)
     base = layout(state, canvas)
     states = {state: {"path": [], "buttons": buttons}}
@@ -1014,7 +1036,7 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
             if target is None:
                 break
             frame = open_fresh(states[target]["path"])
-            state, _ = snapshot(page, frame)
+            state, _ = snapshot(page, frame, skip)
             if state != target:  # the replay ended somewhere else: give up on that state's buttons
                 tried.update(b[0] for b in states[target]["buttons"])
                 current = state if state in states else None
@@ -1026,7 +1048,7 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
         clicks += 1
         page.mouse.click(*point)
         settle(page, frame)
-        state, buttons = snapshot(page, frame)
+        state, buttons = snapshot(page, frame, skip)
         if state == current:
             continue
         if (state[0] != home and state[0] != "hidden") or (state not in states and state[1] in known):
@@ -1283,6 +1305,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             notes.append(f"report has {len(pages)} pages, audited the first {max_pages}")
             pages = pages[:max_pages]
         changed = False  # a button was clicked: other pages may show a bookmark's state, so reload first
+        listed = frozenset(n.strip().lower() for _, _, n in pages if n)  # page navigator buttons to these are not clicked
         for number, (kind, index, name) in enumerate(pages, 1):
             prefix = f"p{number}"
             if on_page:
@@ -1365,7 +1388,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                 elif max_states:
                     progress = (lambda state: on_page(number, len(pages), state)) if on_page else None
                     frame, changed, explore_notes = explore(page, frame, open_fresh, prefix, seen, tips, add,
-                                                            max_states, deadline, known, progress)
+                                                            max_states, deadline, known, progress, listed)
                     notes.extend(explore_notes)
             except Exception as exc:
                 failed.append(f"{prefix}: {str(exc).splitlines()[0][:120]}")
