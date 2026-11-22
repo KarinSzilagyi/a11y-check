@@ -834,7 +834,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     if (["results", "visuals", "tab-order"].includes(location.hash.slice(1))) select("checks");
     $("progress").hidden = false;
     $("go").disabled = true;
-    step(1, "Starting the checker", "After a quiet spell the checker needs up to 30 seconds to start.");
+    step(1, "Starting the checker", "Usually a few seconds. After a quiet spell it can take up to a minute.");
     meter("Waiting to start", null);
   }
 
@@ -856,6 +856,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     showProgress();
     clearTimeout(timer);
     const stop = () => { $("progress").hidden = true; $("go").disabled = locked(); };
+    const since = Date.now();
     const poll = async () => {
       let job;
       try { job = await api("/api/audits/" + encodeURIComponent(id)); }
@@ -868,7 +869,13 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       if (job.url && !$("url").value) $("url").value = job.url;
       if (job.status === "queued") {
         if (job.position > 0) step(1, job.position + (job.position > 1 ? " checks are" : " check is") + " ahead of yours.", "Yours starts as soon as the checker is free.");
-        else step(2, "Opening your report", "Loading the report and waiting for every visual to appear.");
+        else {
+          // Not picked up yet: a checker is being started (after a quiet spell this takes a while).
+          const waited = Math.round((Date.now() - since) / 1000);
+          step(1, "Starting the checker", waited < 15 ? "Usually a few seconds."
+            : "After a quiet spell the checker needs up to a minute to start. Your check is in line and starts by itself.");
+          meter(waited < 3 ? "Waiting to start" : "Waiting to start, " + waited + " s", null);
+        }
       } else if (job.status === "running") {
         if (job.pages) {
           step(3, "Checking page " + job.page + " of " + job.pages,

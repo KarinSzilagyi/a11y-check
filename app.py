@@ -267,7 +267,12 @@ def cleaner():
 def queue_worker():
     """Queue mode worker (worker.py): takes one check from the queue, runs it, writes progress and the
     result to storage, then exits. While more checks wait and time allows, it takes the next one
-    instead of exiting, so waiting checks don't depend on the scaler starting a new execution."""
+    instead of exiting, so waiting checks don't depend on the scaler starting a new execution.
+
+    WORKER_FOREVER=1: an always-on worker (a container app with one replica) that never exits. It
+    keeps Chrome open, takes each check within a couple of seconds, and the event-driven job only
+    starts for checks that wait while it is busy."""
+    forever = os.environ.get("WORKER_FOREVER", "").strip().lower() in ("1", "true", "yes")
     max_jobs = max(1, int(os.environ.get("WORKER_MAX_JOBS", "3")))
     budget = int(os.environ.get("WORKER_SECONDS", "3000"))      # keep below the job's replica timeout
     per_job = int(os.environ.get("WORKER_JOB_SECONDS", "1200"))  # assumed worst case for one check
@@ -276,12 +281,32 @@ def queue_worker():
     s = store()
     with sync_playwright() as pw:
         browser = None
-        for _ in range(max_jobs):
-            if time.time() - began + per_job > budget:
+        if forever:  # Chrome ready before the first check arrives
+            browser = pw.chromium.launch(headless=True, channel=BROWSER_CHANNEL)
+            print("always-on worker: waiting for checks", flush=True)
+        cleaned = time.time()
+        taken = 0
+        while forever or taken < max_jobs:
+            if not forever and time.time() - began + per_job > budget:
                 break
-            message = s.receive(visibility)
+            try:
+                message = s.receive(visibility)
+            except Exception:
+                if not forever:
+                    raise
+                traceback.print_exc()  # storage hiccup: try again shortly
+                time.sleep(10)
+                continue
             if message is None:
-                break
+                if not forever:
+                    break
+                if time.time() - cleaned > 600:  # expired results, as the job does when it exits
+                    cleaned = time.time()
+                    with contextlib.suppress(Exception):
+                        s.clean()
+                time.sleep(2)
+                continue
+            taken += 1
             try:
                 job_id = json.loads(message.content).get("id", "")
             except (ValueError, AttributeError):
@@ -330,6 +355,10 @@ def queue_worker():
                 traceback.print_exc()  # the message comes back and the check runs again
             if job.folder:
                 shutil.rmtree(job.folder, ignore_errors=True)
+            if forever and taken % 20 == 0 and browser is not None:  # a fresh Chrome now and then
+                with contextlib.suppress(Exception):
+                    browser.close()
+                browser = None
         if browser is not None:
             with contextlib.suppress(Exception):
                 browser.close()
@@ -348,6 +377,8 @@ class Store:
         images/<id>/<name>.png  tab-order screenshots
         visits/<key>.json       start times per visitor (keyed hash of the IP, never the IP itself)
         config/salt             random key for that hash, created on first use
+        stats/starts-YYYY-MM.csv  one line per started check: its time (UTC, to the minute), nothing else.
+                                An append blob, so the lifecycle rule (block blobs only) keeps it.
     """
 
     def __init__(self):
@@ -426,6 +457,17 @@ class Store:
         from azure.core.exceptions import ResourceNotFoundError
         with contextlib.suppress(ResourceNotFoundError):
             self.queue.delete_message(message)
+
+    # usage: when checks start, to choose the always-on hours. Only the time (UTC, to the minute):
+    # no link, no IP, no visitor key. One append blob per month.
+    def count_start(self, when=None):
+        from azure.core.exceptions import ResourceExistsError
+        when = time.gmtime(when or time.time())
+        blob = self.blobs.get_blob_client(time.strftime("stats/starts-%Y-%m.csv", when))
+        with contextlib.suppress(ResourceExistsError):
+            if not blob.exists():
+                blob.create_append_blob()
+        blob.append_block(time.strftime("%Y-%m-%dT%H:%MZ\n", when).encode())
 
     # rate limit
     def visitor_key(self, ip):
@@ -696,6 +738,10 @@ def start_queued(url, ip):
         with contextlib.suppress(Exception):
             s.delete(job.id)
         raise
+    try:
+        s.count_start()
+    except Exception:
+        traceback.print_exc()  # the count is only for statistics: never let it stop a check
     return {"id": job.id}
 
 
