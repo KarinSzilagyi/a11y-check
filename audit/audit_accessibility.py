@@ -33,6 +33,8 @@ tab-order screenshot (none: Tab skips it); view is set when the visual first app
 report_area also lists each page's size in Power BI (e.g. 1280 x 720) and its page view: fit to page,
 fit to width (a tall page then scrolls) or actual size. A long page still counts as one page.
 Automated results are evidence; they do not replace a manual check.
+A report that does not load or shows no visuals is reloaded and tried once more first.
+The checks match the VizScore contest audit; keep the two copies in step.
 """
 
 import base64
@@ -48,6 +50,7 @@ from urllib.parse import urlparse
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 POWERBI_HOSTS = ("app.powerbi.com", "app.fabric.microsoft.com")
 
@@ -338,8 +341,20 @@ def screenshot(page):
 
 # ---------- page handling ----------
 
+class ReportProblem(Exception):
+    """A problem of the report itself, not of the audit; its message is the reason shown in audit_status."""
+
+
+class NoVisuals(ReportProblem):
+    pass
+
+
 def wait_rendered(page, frame, settle_ms=4000):
-    frame.locator(".visualContainer").first.wait_for(state="attached", timeout=60000)
+    try:
+        frame.locator(".visualContainer").first.wait_for(state="attached", timeout=60000)
+    except PlaywrightTimeout:
+        # The report frame and its page tabs loaded, but nothing is drawn on the canvas.
+        raise NoVisuals("page shows no visuals") from None
     previous, stable = -1, 0
     for _ in range(60):
         page.wait_for_timeout(500)
@@ -403,7 +418,7 @@ def report_frame(page):
             except Exception:
                 pass
         page.wait_for_timeout(500)
-    raise RuntimeError("Power BI report did not load")
+    raise ReportProblem("report did not load (link broken, report deleted, or it needs sign-in)")
 
 
 PAGE_TABS = ".section.dynamic.thumbnail-container"
@@ -1011,6 +1026,12 @@ def snapshot(page, frame, skip=frozenset()):
     return state, buttons
 
 
+# Buttons that open help: a guided tour, an About or How-to-read panel. They are clicked after all other buttons,
+# and so are the buttons in the views they open (a tour's Next and Back), so content swaps get the view budget first.
+HELP_BUTTON = re.compile(r"\b(help|tour|guide|how to|about|info|instructions?|walkthrough|method(ology)?|glossary|faq|"
+                         r"learn more|story behind|explain|onboarding)\b|^\s*[?i]\s*$", re.I)
+
+
 def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadline, known, on_state=None, skip=frozenset()):
     """Clicks every bookmark and page-navigation button the page offers, in every state reached, and checks
     each new state (page plus visuals on screen). A button is clicked once: a bookmark applies the same
@@ -1021,7 +1042,10 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
     state, buttons = snapshot(page, frame, skip)
     _, canvas = collect(page, frame)
     base = layout(state, canvas)
-    states = {state: {"path": [], "buttons": buttons}}
+    base_items = layout_items(state, canvas)
+    states = {state: {"path": [], "buttons": buttons, "help": False}}
+    late = lambda s, b: states[s]["help"] or bool(HELP_BUTTON.search(b[1]))
+    pending = lambda s, help_too: [b for b in states[s]["buttons"] if b[0] not in tried and (help_too or not late(s, b))]
     known.add(state[1])
     home = state[0]
     tried = set()
@@ -1030,11 +1054,18 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
         if deadline and time.time() > deadline:
             notes.append(f"{prefix}: time limit reached, some buttons were not tried")
             break
-        todo = [b for b in states[current]["buttons"] if b[0] not in tried] if current else []
+        # Content buttons first: here, then in any state; help buttons only when no content button is left.
+        todo = pending(current, False) if current else []
+        target = None
         if not todo:
-            target = next((s for s, info in states.items() if any(b[0] not in tried for b in info["buttons"])), None)
+            target = next((s for s in states if pending(s, False)), None)
             if target is None:
-                break
+                todo = pending(current, True) if current else []
+                if not todo:
+                    target = next((s for s in states if pending(s, True)), None)
+                    if target is None:
+                        break
+        if not todo:
             frame = open_fresh(states[target]["path"])
             state, _ = snapshot(page, frame, skip)
             if state != target:  # the replay ended somewhere else: give up on that state's buttons
@@ -1062,17 +1093,59 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
             break
         extra += 1
         origin = layout(current, canvas)  # where the clicked button is
-        states[state] = {"path": states[current]["path"] + [key], "buttons": buttons}
+        states[state] = {"path": states[current]["path"] + [key], "buttons": buttons,
+                         "help": states[current]["help"] or bool(HELP_BUTTON.search(label))}
         current = state
         if on_state:
             on_state(extra)
         add(audit_page(page, frame, f"{prefix} [view {extra}: {label}]", seen, tips), label, extra,
-            {"hidden": state[0] == "hidden", "rects": layout(state, canvas), "base": base, "origin": origin})
+            {"hidden": state[0] == "hidden", "rects": layout(state, canvas), "base": base, "origin": origin,
+             "items": layout_items(state, canvas), "base_items": base_items})
         park(page)
     return frame, clicks > 0, notes
 
 
 # ---------- report area: hidden pages and bookmark overlays ----------
+
+# What a bookmark view adds, judged from the visuals first seen in it:
+#   content  a data visual (chart, card, table, custom visual other than HTML), or text, HTML or images that don't read as help
+#   help     text, HTML or images that read as help: a guided tour, About, How to read, the story behind a chart
+#   filters  slicers and nothing else with data: a filter panel
+#   none     nothing new: decoration and buttons only, or data visuals the page already shows (same type, name and data)
+OVERLAY_KINDS = {"content": "content", "help": "help and tours", "filters": "filter panels", "none": "nothing new"}
+HELP_TEXT = re.compile(r"\b(help|guided tour|tour|user guide|report guide|guide|how to (read|use|navigate)|how (this|it) works|"
+                       r"about (this|the) (report|dashboard|page|data|method)|about and method|methodology|instructions?|"
+                       r"walkthrough|story behind|glossary|faq|onboarding|(kpi |metric |term )?definitions?|methods? (and|&) notes|notes on (the )?method|step \d+ of \d+|how [\w -]{1,30} works|(animated |quick )?tip)\b|\btips?:", re.I)
+
+
+def item_text(item):
+    return " ".join(str(item.get(k) or "") for k in ("title", "alt", "text")).strip()
+
+
+def is_data_visual(item):
+    kind = item.get("kind") or ""
+    return (item["cat"] == "core" and "licer" not in kind) or (item["cat"] == "custom" and not kind.startswith("HTML Content"))
+
+
+def signature(item):
+    """Same type, name and data: a copy of a visual counts as the visual itself."""
+    return (item.get("kind"), item_text(item).lower()[:120], item.get("points"), json.dumps(item.get("columns")))
+
+
+def view_kind(label, items, shown_before):
+    new = [i for i in items if not (is_data_visual(i) and signature(i) in shown_before)]
+    # A card or chart whose own name reads as help ("How the colour theme works: an animated tip") is help text.
+    if any(is_data_visual(i) and not HELP_TEXT.search(item_text(i)) for i in new):
+        return "content"
+    # Text, HTML and pictures (a picture needs no alt text: a page-sized image of a table is content).
+    info = [i for i in new if not i.get("hidden") and (i["cat"] == "image" or (item_text(i)
+            and (i["cat"] == "text" or (i.get("kind") or "").startswith("HTML Content"))))]
+    if any(i["cat"] == "core" for i in new):  # slicers: a filter panel, unless HTML visuals show content next to them
+        html = [i for i in info if (i.get("kind") or "").startswith("HTML Content") and not HELP_TEXT.search(item_text(i))]
+        return "content" if html else "filters"
+    if info:
+        return "help" if HELP_TEXT.search(" ".join([label] + [item_text(i) for i in info])) else "content"
+    return "none"
 
 # Page view setting in Power BI (View > Page view): numbers in the older format, names in PBIR.
 FIT_MODES = {"0": "page", "fittopage": "page", "1": "width", "fittowidth": "width", "2": "actual", "actualsize": "actual"}
@@ -1139,6 +1212,18 @@ def layout(state, canvas):
         if r and width and height:
             rects.append(((r[0] - x0) / width, (r[1] - y0) / height, r[2] / width, r[3] / height))
     return rects
+
+
+def layout_items(state, canvas):
+    """(identity, rectangle) of the visuals of a snapshot state; identity = type and label (see visual_key).
+    A bookmark that swaps one chart for another in the same place keeps the rectangle but changes the identity."""
+    x0, y0, width, height = canvas
+    items = []
+    for key in state[1]:
+        r = key_rect(key)
+        if r and width and height:
+            items.append((key.rsplit("|", 1)[0], ((r[0] - x0) / width, (r[1] - y0) / height, r[2] / width, r[3] / height)))
+    return items
 
 
 def same_rect(a, b, tolerance=0.025):
@@ -1299,7 +1384,10 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             park(page)
             return loaded
 
-        frame = load()
+        try:
+            frame = load()
+        except ReportProblem:
+            frame = load()  # one more try: a slow or stuck load often works the second time
         pages = list_pages(frame)
         if max_pages and len(pages) > max_pages:
             notes.append(f"report has {len(pages)} pages, audited the first {max_pages}")
@@ -1326,16 +1414,19 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                     source = match_page(definition, area.get("origin") or []) if area.get("origin") else None
                     origin_name = source["name"] if source else (name or f"Page {number}")
                     if area["hidden"] and first is None:
-                        reached[page_name] = {"rects": area["rects"], "via": label or "", "from": origin_name,
+                        reached[page_name] = {"rects": area["rects"], "items": area.get("items") or [], "via": label or "", "from": origin_name,
                                               "image": filename, "matched": bool(found)}
                         title = f"{page_name} (hidden page, via {label})"
                     else:
-                        before = first["rects"] if first else area["base"]
-                        new = [r for r in area["rects"] if not any(same_rect(r, b, 0.01) for b in before)]
+                        # New = a visual not on the page before: a new place, or another visual (type and label) in the
+                        # same place, so views that swap charts in and out of the same slots count with their size.
+                        before = (first.get("items") or []) if first else area.get("base_items") or []
+                        new = [r for ident, r in area.get("items") or []
+                               if not any(ident == b_ident and same_rect(r, b, 0.01) for b_ident, b in before)]
                         share = covered(new)
                         if share >= 0.02:
                             overlays.append({"page": page_name or f"Page {number}", "label": label or "",
-                                             "area": round(share, 2), "image": filename})
+                                             "area": round(share, 2), "image": filename, "_view": (number, state)})
                         if first:
                             title = f"{page_name} (hidden page) · after {label}"
                 for v, d in described:
@@ -1381,14 +1472,18 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                 start_area = None
                 if kind == "start":
                     start, start_canvas = screen_state(page, frame)
-                    start_area = {"hidden": True, "rects": layout(start, start_canvas), "base": []}
+                    start_area = {"hidden": True, "rects": layout(start, start_canvas), "base": [],
+                                  "items": layout_items(start, start_canvas), "base_items": []}
                 add(audit_page(page, frame, prefix, seen, tips), area=start_area)
                 if max_states and deadline and time.time() > deadline:
                     notes.append(f"{prefix}: time limit reached, buttons not tried")
                 elif max_states:
                     progress = (lambda state: on_page(number, len(pages), state)) if on_page else None
+                    # Each page gets an equal share of the time left, so one busy page can't use up the later pages' time;
+                    # time a page doesn't need passes on to the pages after it.
+                    page_deadline = deadline and time.time() + (deadline - time.time()) / (len(pages) - number + 1)
                     frame, changed, explore_notes = explore(page, frame, open_fresh, prefix, seen, tips, add,
-                                                            max_states, deadline, known, progress, listed)
+                                                            max_states, page_deadline, known, progress, listed)
                     notes.extend(explore_notes)
             except Exception as exc:
                 failed.append(f"{prefix}: {str(exc).splitlines()[0][:120]}")
@@ -1403,6 +1498,12 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         result["pages_audited"] = str(sum(1 for image in images if not image[3]))
         result["states_audited"] = str(sum(1 for image in images if image[3]))
         result["audit_status"] = "audited" if not failed else ("partial: " if images else "error: ") + "; ".join(failed)
+    except NoVisuals:
+        result["audit_status"] = "not audited: report shows no visuals (the report file is likely broken)"
+        return result
+    except ReportProblem as exc:
+        result["audit_status"] = f"not audited: {exc}"
+        return result
     except Exception as exc:
         result["audit_status"] = "error: " + str(exc).splitlines()[0][:200]
         return result
@@ -1432,14 +1533,21 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             area_pages.append({"name": page_name, "kind": "hidden", "reached": True, "via": hit["via"],
                                "from": hit["from"], "image": hit["image"]})
     hidden_reached = sum(1 for p in area_pages if p["kind"] in ("hidden", "drillthrough") and p["reached"])
-    overlay_total = round(sum(o["area"] for o in overlays), 1)
+    shown_before = {signature(i) for i in items if not i.get("view") and is_data_visual(i)}
+    for o in overlays:
+        number, state = o.pop("_view")
+        o["kind"] = view_kind(o["label"], [i for i in items if i["p"] == number and i.get("view") == state], shown_before)
+    by_kind = {k: round(sum(o["area"] for o in overlays if o["kind"] == k), 1) for k in OVERLAY_KINDS}
+    overlay_total = by_kind["content"]  # only content counts toward the pages; help, filter panels and repeats are listed apart
+    not_counted = ", ".join(f"{OVERLAY_KINDS[k]} {v}" for k, v in by_kind.items() if k != "content" and v)
     total = round(visible + hidden_reached + overlay_total, 1)
     if definition or reached or overlays:
         hidden_all = sum(1 for p in area_pages if p["kind"] == "hidden")
         result["report_area_summary"] = (
             f"{visible} visible page{'s' if visible != 1 else ''}"
             + (f" + {hidden_reached} hidden page{'s' if hidden_reached != 1 else ''} reached" if hidden_reached else "")
-            + (f" + bookmark overlays {overlay_total}" if overlays else "") + f" = {total} pages"
+            + (f" + bookmark content {overlay_total}" if overlay_total else "") + f" = {total} pages"
+            + (f"; bookmarks also show {not_counted} (not counted)" if not_counted else "")
             + (f" ({hidden_all} hidden in total)" if hidden_all else "")
             + "".join(f"; {count} {label} page{'s' if count != 1 else ''} (not counted)" for label, count in
                       (("tooltip", sum(1 for p in area_pages if p["kind"] == "tooltip")),
@@ -1458,3 +1566,4 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         result["tab_order_checked"] = str(tab_stops)
     result["audit_notes"] = "; ".join(notes)
     return result
+

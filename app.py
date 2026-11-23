@@ -29,9 +29,9 @@ Settings (environment variables):
                       / , /index.html and /palette.html then redirect there (with the query, so result links
                       keep working). Empty (default): this service serves the pages in static/ itself.
     BROWSER_CHANNEL   "chrome" to use installed Google Chrome; empty for Playwright's Chromium (container)
-    MAX_PAGES         pages audited per report (default 12)
-    MAX_STATES        bookmark-button views checked per page (default 8; 0 turns button clicking off)
-    EXPLORE_SECONDS   time per report for clicking buttons (default 300)
+    MAX_PAGES         pages audited per report (default 0: all, as the VizScore audit)
+    MAX_STATES        bookmark-button views checked per page (default 15, as the VizScore audit; 0 turns button clicking off)
+    EXPLORE_SECONDS   time per report for clicking buttons, shared out over the pages (default 900, as the VizScore audit)
     MAX_QUEUE         waiting audits before new ones are refused (default 20)
     RATE_LIMIT        audits one visitor can start per hour (default 6)
     RESULT_MINUTES    how long results and screenshots are kept (default 60)
@@ -88,9 +88,10 @@ BROWSER_CHANNEL = os.environ.get("BROWSER_CHANNEL", "").strip() or None
 PAGE_REDIRECT = os.environ.get("PAGE_REDIRECT", "").strip()
 if PAGE_REDIRECT and not PAGE_REDIRECT.endswith("/"):
     PAGE_REDIRECT += "/"
-MAX_PAGES = int(os.environ.get("MAX_PAGES", "12"))
-MAX_STATES = int(os.environ.get("MAX_STATES", "8"))
-EXPLORE_SECONDS = int(os.environ.get("EXPLORE_SECONDS", "300"))
+# Defaults match the VizScore contest audit, so both give the same results for a report.
+MAX_PAGES = int(os.environ.get("MAX_PAGES", "0"))
+MAX_STATES = int(os.environ.get("MAX_STATES", "15"))
+EXPLORE_SECONDS = int(os.environ.get("EXPLORE_SECONDS", "900"))
 MAX_QUEUE = int(os.environ.get("MAX_QUEUE", "20"))
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "6"))
 RESULT_SECONDS = 60 * int(os.environ.get("RESULT_MINUTES", "60"))

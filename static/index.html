@@ -543,7 +543,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
         </div>
         <div class="paside">
           <b><svg class="i" aria-hidden="true"><use href="#i-info"/></svg>How long does it take?</b>
-          <span>Each page takes 10 to 30 seconds, plus about 30 seconds for every view a bookmark button opens. Most reports are done in 1 to 3 minutes; reports with many buttons take up to 6.</span>
+          <span>Each page takes 10 to 30 seconds, plus about 30 seconds for every view a bookmark button opens. Most reports are done in 1 to 5 minutes; reports with many buttons take up to 20.</span>
           <span>This page updates by itself.</span>
         </div>
         <div class="meter">
@@ -669,7 +669,7 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
           <li><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg><div><b>Results are kept for 1 hour</b><span>Bookmark the results page to come back to it. After an hour the results and screenshots are deleted.</span></div></li>
           <li><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg><div><b>No sign-in, public reports only</b><span>We open the report like any visitor would. Nothing is stored beyond the hour.</span></div></li>
           <li><svg class="i" aria-hidden="true"><use href="#i-people"/></svg><div><b>One check at a time</b><span>Checks wait in line; the page shows how many are ahead of yours.</span></div></li>
-          <li><svg class="i" aria-hidden="true"><use href="#i-bookmark"/></svg><div><b>Button views and tooltips are sampled</b><span>Each bookmark button is clicked once, for up to 8 views per page and 5 minutes per report. Tooltips are hovered on two data points per chart, so one that only shows for certain data can be missed.</span></div></li>
+          <li><svg class="i" aria-hidden="true"><use href="#i-bookmark"/></svg><div><b>Button views and tooltips are sampled</b><span>Each bookmark button is clicked once, for up to 15 views per page and 15 minutes per report, shared out over the pages. Tooltips are hovered on two data points per chart, so one that only shows for certain data can be missed.</span></div></li>
           <li><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg><div><b>Custom visuals are partly visible</b><span>Their text is checked for contrast, but their chart colours often can't be read.</span></div></li>
         </ul>
       </div>
@@ -1083,7 +1083,8 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     unreached: "Set to hidden, and none of the buttons the check tried opens it. Not counted. It may still be reachable through a button the check didn't get to, or by drillthrough.",
     drillthrough: "A drillthrough page: viewers open it by right-clicking a data point and choosing Drill through. Counted only if a button opened it as well.",
     tooltip: "A tooltip page: it only appears, small, while viewers hover over a chart. Not counted as report area.",
-    overlay: "A bookmark that shows extra visuals on top of the page. The number is the share of the page those visuals cover: 0.6× page = 60% of the page."
+    overlay: "A bookmark that shows new content on top of the page or in place of its charts. The number is the share of the page those visuals cover: 0.6× page = 60% of the page.",
+    extra: "A bookmark that shows help, a guided tour, a filter panel or nothing new (charts the page already shows). Listed, but not counted as report area."
   };
   // A page's size in Power BI and its page view. A tall page shown fit to width scrolls; it still counts as one page.
   const FIT = { page: "fit to page", width: "fit to width", actual: "actual size" };
@@ -1109,9 +1110,15 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       else rows.push({ pill: '<span class="pill plain">' + (p.kind === "drillthrough" ? "Drillthrough page" : "Hidden, not reached") + "</span>", name: p.name,
         size: '<span class="muted">not counted</span>', how: p.kind === "drillthrough" ? "right-click › Drill through" : '<span class="muted">no button found</span>', info: p.kind === "drillthrough" ? "drillthrough" : "unreached", shot: "", canvas: pageSize(p) });
     });
-    area.overlays.forEach(o => rows.push({ pill: '<span class="pill ok">Bookmark overlay</span>', name: o.label || "bookmark", size: bar(o.area),
-      how: "on " + esc(o.page), info: "overlay", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }));
-    const rank = { visible: 0, hidden: 1, overlay: 2, unreached: 3, drillthrough: 4, tooltip: 5 };
+    // Only bookmark views with new content count; help, tours, filter panels and repeats are listed apart (as in VizScore).
+    const VIEW_KIND = { help: "Bookmark: help or tour", filters: "Bookmark: filter panel", none: "Bookmark: nothing new" };
+    const counts = o => !o.kind || o.kind === "content";
+    area.overlays.forEach(o => rows.push(counts(o)
+      ? { pill: '<span class="pill ok">Bookmark overlay</span>', name: o.label || "bookmark", size: bar(o.area),
+          how: "on " + esc(o.page), info: "overlay", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }
+      : { pill: '<span class="pill plain">' + VIEW_KIND[o.kind] + "</span>", name: o.label || "bookmark", size: '<span class="muted">not counted</span>',
+          how: "on " + esc(o.page), info: "extra", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }));
+    const rank = { visible: 0, hidden: 1, overlay: 2, extra: 3, unreached: 4, drillthrough: 5, tooltip: 6 };
     rows.sort((a, b) => rank[a.info] - rank[b.info]);
     const tooltips = area.pages.filter(p => p.kind === "tooltip").length;
     const drills = area.pages.filter(p => p.kind === "drillthrough").length;
@@ -1119,12 +1126,15 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
     const extra = [tooltips ? plural(tooltips, "tooltip page", "tooltip pages") : "", drills ? plural(drills, "drillthrough page", "drillthrough pages") : "",
       notReached ? plural(notReached, "hidden page not reached", "hidden pages not reached") : ""].filter(Boolean);
+    const extraViews = area.overlays.filter(o => !counts(o)).length;
+    if (extraViews) extra.push(plural(extraViews, "bookmark view with help, filters or nothing new", "bookmark views with help, filters or nothing new"));
     const hiddenReached = area.pages.filter(p => p.kind !== "visible" && p.kind !== "tooltip" && p.reached).length;
     const long = area.pages.filter(p => (p.kind === "visible" || (p.kind !== "tooltip" && p.reached)) && longer(p)).length;
-    const overlaySum = area.overlays.reduce((s, o) => s + o.area, 0);
+    const contentViews = area.overlays.filter(counts);
+    const overlaySum = contentViews.reduce((s, o) => s + o.area, 0);
     const parts = [area.visible + (area.visible === 1 ? " visible page" : " visible pages")];
     if (hiddenReached) parts.push(hiddenReached + (hiddenReached === 1 ? " hidden page reached" : " hidden pages reached"));
-    if (area.overlays.length) parts.push(area.overlays.length + (area.overlays.length === 1 ? " bookmark overlay" : " bookmark overlays") + " (" + overlaySum.toFixed(1) + " pages)");
+    if (contentViews.length) parts.push(contentViews.length + (contentViews.length === 1 ? " bookmark overlay" : " bookmark overlays") + " (" + overlaySum.toFixed(1) + " pages)");
     return '<div class="area-h"><h3>Report area</h3><button type="button" class="info-btn" aria-expanded="false" aria-controls="area-info" data-toggle="area-info">'
       + '<span class="ic" aria-hidden="true">i</span>What this means</button></div>'
       + '<p class="area-sum"><b>' + area.total.toFixed(1) + " pages</b>" + parts.join(" + ") + "</p>"
@@ -1132,7 +1142,8 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       + (long ? '<p class="small muted">' + (long === 1 ? "1 page is" : long + " pages are") + " taller than 16:9, see Page size. Each still counts as 1 page.</p>" : "")
       + '<div class="area-info" id="area-info" hidden><p>How much report a viewer can actually reach, for example to check a page limit:</p><ul>'
       + "<li><b>Visible pages</b> are in the page list.</li><li><b>Hidden pages</b> aren't in the page list, but a button can open them. They count when the check reached one.</li>"
-      + "<li><b>Bookmark overlays</b> are views a bookmark button shows on top of a page; each counts with the share of the page it covers.</li>"
+      + "<li><b>Bookmark overlays</b> are views a bookmark button shows with new content, on top of a page or in place of its charts; each counts with the share of the page it covers. "
+      + "Views that only show help, a guided tour, a filter panel or charts the page already has are listed but not counted.</li>"
       + "<li><b>Page size</b> is the page's size in Power BI and its page view. Most pages are 16:9 (1280 × 720). A taller page shown fit to width scrolls; it still counts as 1 page, however long it is.</li>"
       + "<li><b>Tooltip pages</b> only appear, small, while hovering a chart. Not counted" + (tooltips ? " (this report has " + tooltips + ")" : "") + ".</li>"
       + "<li><b>Drillthrough pages</b> open by right-clicking a data point. Not counted unless a button also opens them" + (drills ? " (this report has " + drills + ")" : "") + ".</li></ul>"

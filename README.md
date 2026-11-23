@@ -82,9 +82,9 @@ docker build -t a11y-check . && docker run -p 8000:8000 a11y-check
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | comma-separated sites allowed to call the API, e.g. `https://example.com,https://www.example.com` for a page hosted on example.com |
 | `PAGE_REDIRECT` | (empty: the service serves its own pages) | address of a copy of the pages hosted elsewhere, e.g. `https://example.com/a11y-check/`; `/`, `/index.html` and `/palette.html` then redirect there, keeping `?check=…` so result links still work |
 | `BROWSER_CHANNEL` | (empty: Playwright Chromium) | `chrome` for an installed Google Chrome |
-| `MAX_PAGES` | 12 | pages audited per report |
-| `MAX_STATES` | 8 | button views checked per page (0 = don't click buttons) |
-| `EXPLORE_SECONDS` | 300 | time per report for clicking buttons; pages are always checked |
+| `MAX_PAGES` | 0 (all) | pages audited per report |
+| `MAX_STATES` | 15 | button views checked per page (0 = don't click buttons) |
+| `EXPLORE_SECONDS` | 900 | time per report for clicking buttons, shared out over the pages; pages are always checked |
 | `MAX_QUEUE` | 20 | waiting checks before new ones are refused |
 | `RATE_LIMIT` | 6 | checks one visitor can start per hour |
 | `RESULT_MINUTES` | 60 | how long results and screenshots are kept |
