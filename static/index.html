@@ -1084,7 +1084,8 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     drillthrough: "A drillthrough page: viewers open it by right-clicking a data point and choosing Drill through. Counted only if a button opened it as well.",
     tooltip: "A tooltip page: it only appears, small, while viewers hover over a chart. Not counted as report area.",
     overlay: "A bookmark that shows new content on top of the page or in place of its charts. The number is the share of the page those visuals cover: 0.6× page = 60% of the page.",
-    extra: "A bookmark that shows help, a guided tour, a filter panel or nothing new (charts the page already shows). Listed, but not counted as report area."
+    extra: "A bookmark that shows help, a guided tour, an About me panel (the author's bio or contact details), a glossary or data dictionary, a filter panel or nothing new (charts the page already shows). Listed, but not counted as report area.",
+    glossary: "A page that only holds a glossary or data dictionary: terms and their definitions, as text or in a table, and no other content. Listed, but not counted as report area."
   };
   // A page's size in Power BI and its page view. A tall page shown fit to width scrolls; it still counts as one page.
   const FIT = { page: "fit to page", width: "fit to width", actual: "actual size" };
@@ -1104,31 +1105,34 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
     area.pages.forEach(p => {
       if (p.kind === "tooltip") { rows.push({ pill: '<span class="pill plain">Tooltip page</span>', name: p.name, size: '<span class="muted">not counted</span>',
         how: "hovering a chart", info: "tooltip", shot: "", canvas: pageSize(p) }); return; }
+      if (p.glossary) { rows.push({ pill: '<span class="pill plain">Glossary page</span>', name: p.name, size: '<span class="muted">not counted</span>',
+        how: p.kind === "visible" ? "page list" : "button “" + esc(p.via) + "”", info: "glossary", shot: p.kind === "visible" ? pageShot(p.name) : p.image, canvas: pageSize(p) }); return; }
       if (p.kind === "visible") rows.push({ pill: '<span class="pill plain">Visible page</span>', name: p.name, size: bar(1), how: "page list", info: "visible", shot: pageShot(p.name), canvas: pageSize(p) });
       else if (p.reached) rows.push({ pill: '<span class="pill mid">' + (p.kind === "drillthrough" ? "Drillthrough page, button reached" : "Hidden, reachable") + "</span>", name: p.name, size: bar(1),
         how: "button “" + esc(p.via) + "”" + (p.from ? " on " + (typeof p.from === "number" ? "page " + p.from : "“" + esc(p.from) + "”") : ""), info: p.kind === "drillthrough" ? "drillthrough" : "hidden", shot: p.image, canvas: pageSize(p) });
       else rows.push({ pill: '<span class="pill plain">' + (p.kind === "drillthrough" ? "Drillthrough page" : "Hidden, not reached") + "</span>", name: p.name,
         size: '<span class="muted">not counted</span>', how: p.kind === "drillthrough" ? "right-click › Drill through" : '<span class="muted">no button found</span>', info: p.kind === "drillthrough" ? "drillthrough" : "unreached", shot: "", canvas: pageSize(p) });
     });
-    // Only bookmark views with new content count; help, tours, filter panels and repeats are listed apart (as in VizScore).
-    const VIEW_KIND = { help: "Bookmark: help or tour", filters: "Bookmark: filter panel", none: "Bookmark: nothing new" };
+    // Only bookmark views with new content count; help, tours, About me, glossaries, filter panels and repeats are listed apart (as in VizScore).
+    const VIEW_KIND = { help: "Bookmark: help, About or glossary", filters: "Bookmark: filter panel", none: "Bookmark: nothing new" };
     const counts = o => !o.kind || o.kind === "content";
     area.overlays.forEach(o => rows.push(counts(o)
       ? { pill: '<span class="pill ok">Bookmark overlay</span>', name: o.label || "bookmark", size: bar(o.area),
           how: "on " + esc(o.page), info: "overlay", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }
       : { pill: '<span class="pill plain">' + VIEW_KIND[o.kind] + "</span>", name: o.label || "bookmark", size: '<span class="muted">not counted</span>',
           how: "on " + esc(o.page), info: "extra", shot: o.image, canvas: '<span class="muted">on top of the page</span>' }));
-    const rank = { visible: 0, hidden: 1, overlay: 2, extra: 3, unreached: 4, drillthrough: 5, tooltip: 6 };
+    const rank = { visible: 0, hidden: 1, overlay: 2, extra: 3, glossary: 4, unreached: 5, drillthrough: 6, tooltip: 7 };
     rows.sort((a, b) => rank[a.info] - rank[b.info]);
     const tooltips = area.pages.filter(p => p.kind === "tooltip").length;
     const drills = area.pages.filter(p => p.kind === "drillthrough").length;
     const notReached = area.pages.filter(p => p.kind === "hidden" && !p.reached).length;
+    const glossaries = area.pages.filter(p => p.glossary).length;
     const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
-    const extra = [tooltips ? plural(tooltips, "tooltip page", "tooltip pages") : "", drills ? plural(drills, "drillthrough page", "drillthrough pages") : "",
+    const extra = [glossaries ? plural(glossaries, "glossary page", "glossary pages") : "", tooltips ? plural(tooltips, "tooltip page", "tooltip pages") : "", drills ? plural(drills, "drillthrough page", "drillthrough pages") : "",
       notReached ? plural(notReached, "hidden page not reached", "hidden pages not reached") : ""].filter(Boolean);
     const extraViews = area.overlays.filter(o => !counts(o)).length;
-    if (extraViews) extra.push(plural(extraViews, "bookmark view with help, filters or nothing new", "bookmark views with help, filters or nothing new"));
-    const hiddenReached = area.pages.filter(p => p.kind !== "visible" && p.kind !== "tooltip" && p.reached).length;
+    if (extraViews) extra.push(plural(extraViews, "bookmark view with help, About me, a glossary, filters or nothing new", "bookmark views with help, About me, glossaries, filters or nothing new"));
+    const hiddenReached = area.pages.filter(p => p.kind !== "visible" && p.kind !== "tooltip" && p.reached && !p.glossary).length;
     const long = area.pages.filter(p => (p.kind === "visible" || (p.kind !== "tooltip" && p.reached)) && longer(p)).length;
     const contentViews = area.overlays.filter(counts);
     const overlaySum = contentViews.reduce((s, o) => s + o.area, 0);
@@ -1143,7 +1147,8 @@ footer .wrap { padding-block: 22px 40px; font-size: 14px; color: var(--ink-2); d
       + '<div class="area-info" id="area-info" hidden><p>How much report a viewer can actually reach, for example to check a page limit:</p><ul>'
       + "<li><b>Visible pages</b> are in the page list.</li><li><b>Hidden pages</b> aren't in the page list, but a button can open them. They count when the check reached one.</li>"
       + "<li><b>Bookmark overlays</b> are views a bookmark button shows with new content, on top of a page or in place of its charts; each counts with the share of the page it covers. "
-      + "Views that only show help, a guided tour, a filter panel or charts the page already has are listed but not counted.</li>"
+      + "Views that only show help, a guided tour, an About me panel (the author's bio or contact details), a glossary or data dictionary, a filter panel or charts the page already has are listed but not counted.</li>"
+      + "<li><b>Glossary pages</b> hold only a glossary or data dictionary (terms and their definitions, as text or in a table), with no other content. Listed but not counted" + (glossaries ? " (this report has " + glossaries + ")" : "") + ".</li>"
       + "<li><b>Page size</b> is the page's size in Power BI and its page view. Most pages are 16:9 (1280 × 720). A taller page shown fit to width scrolls; it still counts as 1 page, however long it is.</li>"
       + "<li><b>Tooltip pages</b> only appear, small, while hovering a chart. Not counted" + (tooltips ? " (this report has " + tooltips + ")" : "") + ".</li>"
       + "<li><b>Drillthrough pages</b> open by right-clicking a data point. Not counted unless a button also opens them" + (drills ? " (this report has " + drills + ")" : "") + ".</li></ul>"

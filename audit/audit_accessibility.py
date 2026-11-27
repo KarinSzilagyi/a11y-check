@@ -24,6 +24,8 @@ report_area (JSON) shows how much report a viewer can reach: every page of the r
 (visible, hidden, tooltip or drillthrough), which hidden pages a button opens, and the share of the page
 each bookmark view covers with visuals it adds (0.6 = 60% of the page). report_area_summary is the same in
 one line, e.g. "1 visible page + 3 hidden pages reached + bookmark overlays 0.8 = 4.8 pages".
+A page that only holds a glossary or data dictionary is listed with glossary: true and not counted; bookmark views
+with help, a guided tour, an About me panel or a glossary are listed apart from content and not counted either.
 visuals_items is the same inventory one visual at a time (JSON, see describe()): its category
 (core, custom, text, shape, image, button), a sub-kind (shape outline, image format, text role,
 button action), its visible text or the words inside an SVG image, and its alt text. Core and custom
@@ -1109,13 +1111,25 @@ def explore(page, frame, open_fresh, prefix, seen, tips, add, max_states, deadli
 
 # What a bookmark view adds, judged from the visuals first seen in it:
 #   content  a data visual (chart, card, table, custom visual other than HTML), or text, HTML or images that don't read as help
-#   help     text, HTML or images that read as help: a guided tour, About, How to read, the story behind a chart
+#   help     text, HTML or images that read as help: a guided tour, About, How to read, the story behind a chart,
+#            an About me panel (the author's bio or contact details), or a glossary or data dictionary (also as a table)
 #   filters  slicers and nothing else with data: a filter panel
 #   none     nothing new: decoration and buttons only, or data visuals the page already shows (same type, name and data)
-OVERLAY_KINDS = {"content": "content", "help": "help and tours", "filters": "filter panels", "none": "nothing new"}
+# A page whose only content is a glossary or data dictionary is not counted either (glossary: true in report_area).
+OVERLAY_KINDS = {"content": "content", "help": "help, About and glossary", "filters": "filter panels", "none": "nothing new"}
 HELP_TEXT = re.compile(r"\b(help|guided tour|tour|user guide|report guide|guide|how to (read|use|navigate)|how (this|it) works|"
                        r"about (this|the) (report|dashboard|page|data|method)|about and method|methodology|instructions?|"
                        r"walkthrough|story behind|glossary|faq|onboarding|(kpi |metric |term )?definitions?|methods? (and|&) notes|notes on (the )?method|step \d+ of \d+|how [\w -]{1,30} works|(animated |quick )?tip)\b|\btips?:", re.I)
+# About me: the author's bio, photo or contact details. Only text, HTML and pictures are judged with it.
+ABOUT_TEXT = re.compile(r"\b(about (me|us|the (report )?(author|creator|designer|developer|maker)s?)|"
+                        r"(report )?(author|creator)('s)? (bio(graphy)?|profile|details)|biography|who (i am|am i|we are)|"
+                        r"meet the (author|creator|designer|team)|my (story|background|portfolio)|connect with me|"
+                        r"contact (me|the author)|follow me|linkedin)\b", re.I)
+# Glossary or data dictionary, searched in the whole view or page: its label or name, titles, texts and table columns.
+GLOSSARY_TEXT = re.compile(r"\b(glossary|data dictionary|dictionary|terminology|key terms|list of terms|terms (and|&) definitions|"
+                           r"definitions? of (the )?(terms|kpis?|metrics|measures|fields)|(kpi|metric|measure|field|term) (definitions?|dictionary)|"
+                           r"abbreviations|acronyms|lexicon)\b|\bterms?\b[\s,;|:/&-]{1,5}(definitions?|meanings?|descriptions?|explanations?)\b", re.I)
+TABLE_KINDS = ("Table", "Matrix", "Multi-row card")  # the data visuals a glossary may use
 
 
 def item_text(item):
@@ -1132,19 +1146,45 @@ def signature(item):
     return (item.get("kind"), item_text(item).lower()[:120], item.get("points"), json.dumps(item.get("columns")))
 
 
+def view_text(label, items):
+    """All the words of a view or page: its label or name, and each visual's title, text, table columns and SVG words."""
+    parts = [label or ""]
+    for i in items:
+        parts += [item_text(i), str(i.get("subtitle") or "")] + [str(w) for k in ("columns", "words") for w in i.get(k) or []]
+    return " ".join(parts)
+
+
+def is_glossary(label, items, page=False):
+    """A glossary or data dictionary: its words anywhere in the view or page, and no data visual other than tables.
+    A page is stricter, as it has more on it: a button ("Open the glossary") doesn't make it one, and each HTML visual
+    must itself read as glossary or help, since HTML visuals often hold a page's charts and story."""
+    if page:
+        items = [i for i in items if i["cat"] != "button"]
+        if any((i.get("kind") or "").startswith("HTML Content") and not GLOSSARY_TEXT.search(view_text("", [i]))
+               and not HELP_TEXT.search(item_text(i)) for i in items):
+            return False
+    return bool(GLOSSARY_TEXT.search(view_text(label, items))) and not any(
+        is_data_visual(i) and not (i.get("kind") or "").startswith(TABLE_KINDS) for i in items)
+
+
 def view_kind(label, items, shown_before):
     new = [i for i in items if not (is_data_visual(i) and signature(i) in shown_before)]
+    if is_glossary(label, new):  # also a table of terms whose own title doesn't say glossary
+        return "help"
     # A card or chart whose own name reads as help ("How the colour theme works: an animated tip") is help text.
     if any(is_data_visual(i) and not HELP_TEXT.search(item_text(i)) for i in new):
         return "content"
     # Text, HTML and pictures (a picture needs no alt text: a page-sized image of a table is content).
     info = [i for i in new if not i.get("hidden") and (i["cat"] == "image" or (item_text(i)
             and (i["cat"] == "text" or (i.get("kind") or "").startswith("HTML Content"))))]
-    if any(i["cat"] == "core" for i in new):  # slicers: a filter panel, unless HTML visuals show content next to them
+    if any(i["cat"] == "core" and "licer" in (i.get("kind") or "") for i in new):
+        # slicers: a filter panel, unless HTML visuals show content next to them
         html = [i for i in info if (i.get("kind") or "").startswith("HTML Content") and not HELP_TEXT.search(item_text(i))]
         return "content" if html else "filters"
-    if info:
-        return "help" if HELP_TEXT.search(" ".join([label] + [item_text(i) for i in info])) else "content"
+    helpers = [i for i in new if is_data_visual(i)]  # data visuals left here read as help
+    if info or helpers:
+        text = " ".join([label] + [item_text(i) for i in info + helpers])
+        return "help" if HELP_TEXT.search(text) or ABOUT_TEXT.search(text) else "content"
     return "none"
 
 # Page view setting in Power BI (View > Page view): numbers in the older format, names in PBIR.
@@ -1415,7 +1455,7 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                     origin_name = source["name"] if source else (name or f"Page {number}")
                     if area["hidden"] and first is None:
                         reached[page_name] = {"rects": area["rects"], "items": area.get("items") or [], "via": label or "", "from": origin_name,
-                                              "image": filename, "matched": bool(found)}
+                                              "image": filename, "matched": bool(found), "_view": (number, state)}
                         title = f"{page_name} (hidden page, via {label})"
                     else:
                         # New = a visual not on the page before: a new place, or another visual (type and label) in the
@@ -1521,7 +1561,12 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
                   visuals_core_data_types=listing(report_counts["data"]),
                   visuals_custom_types=listing(report_counts["custom"]), visuals_by_page="; ".join(by_page),
                   visuals_items=json.dumps(items, ensure_ascii=False, separators=(",", ":")))
-    visible = sum(1 for kind, _, _ in pages if kind != "start") if "pages" in locals() else 0
+    listed_pages = [(n, kind, name) for n, (kind, _, name) in enumerate(pages, 1)] if "pages" in locals() else []
+    # A page that only holds a glossary or data dictionary is listed but not counted (visible or reached hidden page).
+    page_items = lambda n, state: [i for i in items if i["p"] == n and i.get("view") == (state or None)]
+    glossary = {name for n, kind, name in listed_pages if kind != "start" and is_glossary(name, page_items(n, 0), page=True)}
+    glossary |= {name for name, hit in reached.items() if is_glossary(name, page_items(*hit["_view"]), page=True)}
+    visible = sum(1 for _, kind, name in listed_pages if kind != "start" and name not in glossary)
     area_pages = []
     for page_def in definition:
         hit = reached.get(page_def["name"])
@@ -1532,7 +1577,10 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
         if not any(p["name"] == page_name for p in area_pages):
             area_pages.append({"name": page_name, "kind": "hidden", "reached": True, "via": hit["via"],
                                "from": hit["from"], "image": hit["image"]})
-    hidden_reached = sum(1 for p in area_pages if p["kind"] in ("hidden", "drillthrough") and p["reached"])
+    for p in area_pages:
+        if p["name"] in glossary and (p["kind"] == "visible" or p["reached"]):
+            p["glossary"] = True
+    hidden_reached = sum(1 for p in area_pages if p["kind"] in ("hidden", "drillthrough") and p["reached"] and not p.get("glossary"))
     shown_before = {signature(i) for i in items if not i.get("view") and is_data_visual(i)}
     for o in overlays:
         number, state = o.pop("_view")
@@ -1550,7 +1598,8 @@ def audit_report(browser, row, tab_dir, max_pages=None, on_page=None, max_states
             + (f"; bookmarks also show {not_counted} (not counted)" if not_counted else "")
             + (f" ({hidden_all} hidden in total)" if hidden_all else "")
             + "".join(f"; {count} {label} page{'s' if count != 1 else ''} (not counted)" for label, count in
-                      (("tooltip", sum(1 for p in area_pages if p["kind"] == "tooltip")),
+                      (("glossary", sum(1 for p in area_pages if p.get("glossary"))),
+                       ("tooltip", sum(1 for p in area_pages if p["kind"] == "tooltip")),
                        ("drillthrough", sum(1 for p in area_pages if p["kind"] == "drillthrough"))) if count))
         result["report_area"] = json.dumps({"defined": bool(definition), "visible": visible, "total": total,
                                             "pages": area_pages, "overlays": overlays},
